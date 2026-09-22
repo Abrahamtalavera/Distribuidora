@@ -18,9 +18,18 @@ SECRET_KEY = os.environ.get(
 DEBUG = os.environ.get("DJANGO_DEBUG", "1" if "DATABASE_URL" not in os.environ else "0") == "1"
 
 ALLOWED_HOSTS = ["*"]  # Se restringe más adelante cuando tengamos el dominio final fijo.
+
+# CSRF: se agrega automáticamente el dominio público que Railway asigna a esta
+# aplicación (viene en la variable de entorno RAILWAY_PUBLIC_DOMAIN), más
+# cualquier dominio extra que se defina manualmente en DJANGO_CSRF_TRUSTED_ORIGINS.
 CSRF_TRUSTED_ORIGINS = [
     o.strip() for o in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()
 ]
+_railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
+if _railway_domain:
+    CSRF_TRUSTED_ORIGINS.append(f"https://{_railway_domain}")
+# Cubre además cualquier subdominio *.up.railway.app, por si se genera otro dominio.
+CSRF_TRUSTED_ORIGINS.append("https://*.up.railway.app")
 
 
 INSTALLED_APPS = [
