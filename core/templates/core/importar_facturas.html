@@ -1,0 +1,35 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<h1>Importar facturas desde Excel</h1>
+
+<p>Sube el Excel actualizado (exportado desde SAP). Solo se agregarán las facturas
+nuevas — las que ya existen en el sistema no se modifican.</p>
+
+{% if messages %}
+  <ul class="messagelist">
+    {% for message in messages %}
+      <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+    {% endfor %}
+  </ul>
+{% endif %}
+
+<form method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <input type="submit" value="Importar" class="default">
+</form>
+
+{% if resumen %}
+  <h2>Resumen de la importación</h2>
+  <ul>
+    <li>Facturas encontradas en el Excel: {{ resumen.facturas_en_excel }}</li>
+    <li>Facturas nuevas creadas: {{ resumen.facturas_creadas }}</li>
+    <li>Facturas que ya existían (omitidas): {{ resumen.facturas_omitidas_existentes }}</li>
+    <li>Líneas de detalle creadas: {{ resumen.lineas_creadas }}</li>
+    <li>Clientes nuevos creados: {{ resumen.clientes_nuevos }}</li>
+    <li>Productos nuevos creados: {{ resumen.productos_nuevos }}</li>
+    <li>Vendedores nuevos creados: {{ resumen.vendedores_nuevos }}</li>
+  </ul>
+{% endif %}
+{% endblock %}
