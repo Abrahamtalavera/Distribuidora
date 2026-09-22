@@ -110,4 +110,4 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # Límite de subida de archivos (el Excel de facturas puede pesar varios MB)
 DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024
-#final
+
