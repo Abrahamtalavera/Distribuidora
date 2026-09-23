@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 
 class ModalidadPago(models.Model):
@@ -43,6 +44,60 @@ class Vendedor(models.Model):
 
     def __str__(self):
         return self.nombre
+
+
+class Vehiculo(models.Model):
+    placa = models.CharField(max_length=20, unique=True)
+    descripcion = models.CharField(max_length=100, blank=True)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name_plural = "Vehículos"
+
+    def __str__(self):
+        return self.placa
+
+
+class Carga(models.Model):
+    """
+    Agrupación de facturas que arma el planeador de rutas para una salida de
+    reparto (Cambio #7). El número consecutivo de este registro (su id) es el
+    "identificador de carga" al que se le asocian los datos de la salida:
+    conductor, ruta, unidad de transporte, kilometraje, etc.
+    """
+
+    ESTADO_CHOICES = [
+        ("PLANEADA", "Planeada"),
+        ("EN_RUTA", "En ruta"),
+        ("CERRADA", "Cerrada"),
+    ]
+
+    fecha_planeada = models.DateField(default=timezone.localdate)
+    ruta = models.ForeignKey(
+        "Ruta", null=True, blank=True, on_delete=models.SET_NULL, related_name="cargas"
+    )
+    conductor = models.ForeignKey(
+        "Vendedor",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        limit_choices_to={"tipo": "REPARTIDOR"},
+        related_name="cargas_como_conductor",
+    )
+    vehiculo = models.ForeignKey(Vehiculo, null=True, blank=True, on_delete=models.SET_NULL)
+    km_inicial = models.DecimalField(max_digits=10, decimal_places=1, null=True, blank=True)
+    km_final = models.DecimalField(max_digits=10, decimal_places=1, null=True, blank=True)
+    estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default="PLANEADA")
+    observaciones = models.TextField(blank=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Carga"
+        verbose_name_plural = "Cargas"
+        ordering = ["-fecha_planeada", "-id"]
+
+    def __str__(self):
+        return f"Carga #{self.id} - {self.fecha_planeada}"
 
 
 class Cliente(models.Model):
@@ -117,6 +172,14 @@ class Factura(models.Model):
     )
     origen_importacion = models.CharField(
         max_length=100, blank=True, help_text="Nombre del archivo Excel del que se importó"
+    )
+    carga = models.ForeignKey(
+        Carga,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="facturas",
+        help_text="Carga (salida de reparto) a la que fue asignada esta factura",
     )
     creado_en = models.DateTimeField(auto_now_add=True)
 

@@ -1,0 +1,30 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<h1>Agrupar facturas en una nueva Carga</h1>
+
+<p>Vas a crear una nueva Carga (identificador de carga consecutivo) y asignarle
+las siguientes {{ facturas|length }} factura(s):</p>
+
+<ul>
+  {% for factura in facturas %}
+    <li>
+      {{ factura.numero_factura }} — {{ factura.cliente }} —
+      {{ factura.get_estado_entrega_display }} — Total: {{ factura.total }}
+    </li>
+  {% endfor %}
+</ul>
+
+<form method="post">
+  {% csrf_token %}
+
+  {{ form.as_p }}
+
+  {% for factura in facturas %}
+    <input type="hidden" name="{{ action_checkbox_name }}" value="{{ factura.pk }}">
+  {% endfor %}
+  <input type="hidden" name="action" value="agrupar_en_carga">
+  <input type="submit" name="apply" value="Crear carga y asignar" class="default">
+  <a href="../" class="button cancel-link">Cancelar</a>
+</form>
+{% endblock %}
