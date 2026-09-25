@@ -19,6 +19,9 @@ class FacturaAdmin(admin.ModelAdmin):
     list_display = (
         "numero_factura",
         "cliente",
+        "sucursal",
+        "municipio",
+        "canal",
         "fecha_emision",
         "fecha_sugerida_entrega",
         "modalidad_pago",
@@ -35,11 +38,26 @@ class FacturaAdmin(admin.ModelAdmin):
         "fecha_emision",
         "carga",
         "cliente__ruta",
+        "cliente__sucursal",
+        "cliente__municipio",
+        "cliente__canal",
     )
     search_fields = ("numero_factura", "cliente__nombre", "cliente__codigo")
     inlines = [FacturaDetalleInline]
     change_list_template = "admin/core/factura/change_list.html"
     actions = ["agrupar_en_carga"]
+
+    @admin.display(description="Sucursal", ordering="cliente__sucursal")
+    def sucursal(self, obj):
+        return obj.cliente.sucursal
+
+    @admin.display(description="Municipio", ordering="cliente__municipio")
+    def municipio(self, obj):
+        return obj.cliente.municipio
+
+    @admin.display(description="Canal", ordering="cliente__canal")
+    def canal(self, obj):
+        return obj.cliente.canal
 
     def get_urls(self):
         urls = super().get_urls()
