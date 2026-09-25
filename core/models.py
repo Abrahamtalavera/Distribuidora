@@ -219,6 +219,53 @@ class FacturaDetalle(models.Model):
         return self.cantidad_facturada - self.cantidad_entregada
 
 
+class AreaResponsable(models.Model):
+    """
+    Catálogo de áreas del negocio que pueden ser responsables de una
+    devolución (Cambio #9): Bodega PT, Producción, Ventas, Logística, etc.
+    Se deja como catálogo editable desde el admin para que se puedan agregar
+    o renombrar áreas sin necesidad de un cambio de código.
+    """
+
+    nombre = models.CharField(max_length=100, unique=True)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = "Área responsable"
+        verbose_name_plural = "Áreas responsables"
+        ordering = ["nombre"]
+
+    def __str__(self):
+        return self.nombre
+
+
+class MotivoDevolucion(models.Model):
+    """
+    Catálogo de motivos de devolución de productos en las entregas
+    (Cambio #9), cada uno asociado al área responsable de esa devolución.
+    Cargado inicialmente a partir de la lista de motivos que ya maneja el
+    negocio (archivo "Motivos de devoluciones.xlsx").
+    """
+
+    nombre = models.CharField(max_length=150, unique=True)
+    area_responsable = models.ForeignKey(
+        AreaResponsable,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="motivos_devolucion",
+    )
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = "Motivo de devolución"
+        verbose_name_plural = "Motivos de devolución"
+        ordering = ["nombre"]
+
+    def __str__(self):
+        return self.nombre
+
+
 class Entrega(models.Model):
     TIPO_CHOICES = [("PARCIAL", "Parcial"), ("TOTAL", "Total")]
     ESTADO_CHOICES = [("CONFIRMADA", "Confirmada"), ("ANULADA", "Anulada")]
@@ -227,6 +274,18 @@ class Entrega(models.Model):
     fecha_entrega = models.DateTimeField(auto_now_add=True)
     tipo_entrega = models.CharField(max_length=10, choices=TIPO_CHOICES)
     repartidor = models.ForeignKey(Vendedor, null=True, blank=True, on_delete=models.SET_NULL)
+    motivo_devolucion_general = models.ForeignKey(
+        MotivoDevolucion,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="entregas_con_motivo_general",
+        help_text=(
+            "Motivo que aplica a toda la visita (por ejemplo, local cerrado o "
+            "cliente sin dinero). Déjalo vacío si lo que se devolvió fue solo "
+            "algunos productos con su propio motivo."
+        ),
+    )
     observaciones = models.TextField(blank=True)
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default="CONFIRMADA")
 
@@ -241,6 +300,15 @@ class EntregaDetalle(models.Model):
     entrega = models.ForeignKey(Entrega, on_delete=models.CASCADE, related_name="lineas")
     factura_detalle = models.ForeignKey(FacturaDetalle, on_delete=models.PROTECT)
     cantidad_entregada = models.DecimalField(max_digits=12, decimal_places=3)
+    cantidad_devuelta = models.DecimalField(max_digits=12, decimal_places=3, default=0)
+    motivo_devolucion = models.ForeignKey(
+        MotivoDevolucion,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="lineas_entrega",
+        help_text="Motivo de devolución específico de este producto, si aplica.",
+    )
 
     class Meta:
         verbose_name = "Línea de entrega"

@@ -175,15 +175,46 @@ class CargaAdmin(admin.ModelAdmin):
         return custom + urls
 
 
+@admin.register(models.AreaResponsable)
+class AreaResponsableAdmin(admin.ModelAdmin):
+    list_display = ("nombre", "activo")
+    search_fields = ("nombre",)
+
+
+@admin.register(models.MotivoDevolucion)
+class MotivoDevolucionAdmin(admin.ModelAdmin):
+    list_display = ("nombre", "area_responsable", "activo")
+    list_filter = ("area_responsable", "activo")
+    search_fields = ("nombre",)
+
+
 class EntregaDetalleInline(admin.TabularInline):
     model = models.EntregaDetalle
     extra = 0
+    fields = (
+        "factura_detalle",
+        "cantidad_entregada",
+        "cantidad_devuelta",
+        "motivo_devolucion",
+    )
+    # "factura_detalle" es un FK a cualquier línea de cualquier factura; sin
+    # esto, el admin intenta dibujar un <select> con las ~32,000 líneas que
+    # ya existen en producción y la pantalla se queda colgada cargando.
+    raw_id_fields = ("factura_detalle",)
 
 
 @admin.register(models.Entrega)
 class EntregaAdmin(admin.ModelAdmin):
-    list_display = ("id", "factura", "fecha_entrega", "tipo_entrega", "repartidor", "estado")
-    list_filter = ("tipo_entrega", "estado")
+    list_display = (
+        "id",
+        "factura",
+        "fecha_entrega",
+        "tipo_entrega",
+        "repartidor",
+        "motivo_devolucion_general",
+        "estado",
+    )
+    list_filter = ("tipo_entrega", "estado", "motivo_devolucion_general__area_responsable")
     inlines = [EntregaDetalleInline]
 
 
