@@ -161,6 +161,11 @@ class Factura(models.Model):
     modalidad_pago = models.ForeignKey(ModalidadPago, on_delete=models.PROTECT)
     fecha_emision = models.DateField()
     fecha_vencimiento = models.DateField(null=True, blank=True)
+    fecha_sugerida_entrega = models.DateField(
+        null=True,
+        blank=True,
+        help_text="El planeador la define factura por factura; por defecto es un día después de la fecha de emisión.",
+    )
     subtotal = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     impuestos = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     total = models.DecimalField(max_digits=14, decimal_places=2, default=0)

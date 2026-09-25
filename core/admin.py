@@ -5,7 +5,7 @@ from django.shortcuts import redirect, render
 
 from core import models
 from core.forms import AgruparEnCargaForm
-from core.views import importar_facturas_view
+from core.views import importar_facturas_view, imprimir_carga_view
 
 
 class FacturaDetalleInline(admin.TabularInline):
@@ -20,12 +20,14 @@ class FacturaAdmin(admin.ModelAdmin):
         "numero_factura",
         "cliente",
         "fecha_emision",
+        "fecha_sugerida_entrega",
         "modalidad_pago",
         "total",
         "estado_entrega",
         "estado_factura",
         "carga",
     )
+    list_editable = ("fecha_sugerida_entrega",)
     list_filter = (
         "estado_entrega",
         "estado_factura",
@@ -155,10 +157,22 @@ class CargaAdmin(admin.ModelAdmin):
     )
     list_filter = ("estado", "fecha_planeada", "ruta", "conductor")
     inlines = [FacturaEnCargaInline]
+    change_form_template = "admin/core/carga/change_form.html"
 
     @admin.display(description="Facturas")
     def total_facturas(self, obj):
         return obj.facturas.count()
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path(
+                "<int:pk>/imprimir/",
+                self.admin_site.admin_view(imprimir_carga_view),
+                name="core_carga_imprimir",
+            ),
+        ]
+        return custom + urls
 
 
 class EntregaDetalleInline(admin.TabularInline):

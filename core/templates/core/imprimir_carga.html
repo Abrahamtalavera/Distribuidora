@@ -1,0 +1,314 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Carga #{{ carga.id }} — Reporte de despacho</title>
+<style>
+  @page { size: A4; margin: 16mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    color: #1a1a1a;
+    background: #f2f2f2;
+    margin: 0;
+    padding: 24px;
+  }
+  .barra-acciones {
+    max-width: 794px;
+    margin: 0 auto 14px auto;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+  .barra-acciones a, .barra-acciones button {
+    font-family: inherit;
+    font-size: 13px;
+    padding: 8px 16px;
+    border-radius: 4px;
+    border: 1px solid #1a1a1a;
+    background: #1a1a1a;
+    color: #fff;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .barra-acciones a.secundario {
+    background: #fff;
+    color: #1a1a1a;
+  }
+  .page {
+    width: 794px;
+    min-height: 1000px;
+    background: #ffffff;
+    margin: 0 auto;
+    padding: 36px 44px;
+    border: 1px solid #ddd;
+  }
+
+  .encabezado-doc {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    border-bottom: 2px solid #1a1a1a;
+    padding-bottom: 14px;
+    margin-bottom: 20px;
+  }
+  .encabezado-doc img.logo {
+    height: 64px;
+    width: auto;
+    flex-shrink: 0;
+  }
+  .titulos-doc { flex: 1; }
+  .titulo-reporte {
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    margin: 0 0 2px 0;
+    text-transform: uppercase;
+  }
+  .subtitulo-reporte {
+    font-size: 12px;
+    color: #666;
+    margin: 0;
+  }
+
+  .carga-box {
+    border: 2px solid #1a1a1a;
+    border-radius: 4px;
+    padding: 14px 18px;
+    margin-bottom: 22px;
+  }
+  .carga-id {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 8px;
+  }
+  .carga-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px 18px;
+    font-size: 12px;
+  }
+  .campo .etiqueta {
+    display: block;
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #666;
+    margin-bottom: 1px;
+  }
+  .campo .valor {
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .campo.observaciones {
+    grid-column: 1 / -1;
+  }
+
+  .titulo-seccion {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #444;
+    border-bottom: 2px solid #1a1a1a;
+    padding-bottom: 4px;
+    margin-bottom: 10px;
+  }
+
+  table.facturas {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-bottom: 24px;
+  }
+  table.facturas th {
+    text-align: left;
+    background: #f7f7f7;
+    border-bottom: 2px solid #1a1a1a;
+    padding: 7px 8px;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    color: #444;
+  }
+  table.facturas td {
+    padding: 7px 8px;
+    border-bottom: 1px solid #eee;
+  }
+  table.facturas td.num, table.facturas th.num { text-align: right; }
+
+  .resumen-box {
+    border: 2px solid #1a1a1a;
+    border-radius: 4px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+  }
+  .resumen-titulo {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+  .resumen-totales {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13.5px;
+    font-weight: 700;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #ccc;
+  }
+  table.desglose {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  table.desglose th {
+    text-align: left;
+    font-size: 10px;
+    text-transform: uppercase;
+    color: #666;
+    padding: 4px 6px;
+    border-bottom: 1px solid #ccc;
+  }
+  table.desglose td {
+    padding: 5px 6px;
+  }
+  table.desglose td.num, table.desglose th.num { text-align: right; }
+  table.desglose tr.total-fila td {
+    border-top: 1px solid #1a1a1a;
+    font-weight: 700;
+    padding-top: 7px;
+  }
+
+  .firmas {
+    margin-top: 40px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .firma {
+    width: 45%;
+    text-align: center;
+    font-size: 11px;
+    color: #444;
+  }
+  .firma .linea {
+    border-top: 1px solid #1a1a1a;
+    margin-bottom: 6px;
+    padding-top: 4px;
+  }
+
+  @media print {
+    body { background: #fff; padding: 0; }
+    .barra-acciones { display: none; }
+    .page { border: none; margin: 0; width: auto; min-height: 0; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="barra-acciones">
+    <a href="{% url 'admin:core_carga_change' carga.pk %}" class="secundario">&larr; Volver a la Carga</a>
+    <button onclick="window.print()">Imprimir</button>
+  </div>
+
+  <div class="page">
+
+    <div class="encabezado-doc">
+      <img class="logo" src="{% static 'core/logo_sol_maya.png' %}" alt="Sol Maya">
+      <div class="titulos-doc">
+        <div class="titulo-reporte">Reporte de Carga de Reparto</div>
+        <div class="subtitulo-reporte">Sol Maya — documento de despacho</div>
+      </div>
+    </div>
+
+    <div class="carga-box">
+      <div class="carga-id">ID de Carga: CARGA-{{ carga.id|stringformat:"04d" }}</div>
+      <div class="carga-grid">
+        <div class="campo"><span class="etiqueta">Fecha planeada</span><span class="valor">{{ carga.fecha_planeada|date:"d/m/Y" }}</span></div>
+        <div class="campo"><span class="etiqueta">Ruta / Zona</span><span class="valor">{{ carga.ruta|default:"—" }}</span></div>
+        <div class="campo"><span class="etiqueta">Estado</span><span class="valor">{{ carga.get_estado_display }}</span></div>
+        <div class="campo"><span class="etiqueta">Conductor</span><span class="valor">{{ carga.conductor|default:"—" }}</span></div>
+        <div class="campo"><span class="etiqueta">Unidad (vehículo)</span><span class="valor">{{ carga.vehiculo|default:"—" }}</span></div>
+        <div class="campo"><span class="etiqueta">Km inicial / final</span><span class="valor">{{ carga.km_inicial|stringformat:".1f"|default:"—" }} &rarr; {{ carga.km_final|stringformat:".1f"|default:"—" }}</span></div>
+        {% if carga.observaciones %}
+        <div class="campo observaciones"><span class="etiqueta">Observaciones</span><span class="valor">{{ carga.observaciones }}</span></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="titulo-seccion">Facturas incluidas en esta carga ({{ total_facturas }})</div>
+    <table class="facturas">
+      <thead>
+        <tr>
+          <th>N.º Factura</th>
+          <th>Cliente</th>
+          <th>Fecha factura</th>
+          <th>Fecha sugerida de entrega</th>
+          <th>Modalidad</th>
+          <th>Estado entrega</th>
+          <th class="num">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for factura in facturas %}
+        <tr>
+          <td>{{ factura.numero_factura }}</td>
+          <td>{{ factura.cliente }}</td>
+          <td>{{ factura.fecha_emision|date:"d/m/Y" }}</td>
+          <td>{{ factura.fecha_sugerida_entrega|date:"d/m/Y"|default:"—" }}</td>
+          <td>{{ factura.modalidad_pago|default:"—" }}</td>
+          <td>{{ factura.get_estado_entrega_display }}</td>
+          <td class="num">C$ {{ factura.total_fmt }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7">Esta carga todavía no tiene facturas asignadas.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="resumen-box">
+      <div class="resumen-titulo">Resumen de la carga</div>
+      <div class="resumen-totales">
+        <span>Total de facturas: {{ total_facturas }}</span>
+        <span>Monto total de la carga: C$ {{ monto_total_fmt }}</span>
+      </div>
+      <table class="desglose">
+        <thead>
+          <tr>
+            <th>Modalidad de pago</th>
+            <th class="num">Cantidad de facturas</th>
+            <th class="num">Monto</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for nombre, datos in resumen_modalidades.items %}
+          <tr>
+            <td>{{ nombre }}</td>
+            <td class="num">{{ datos.cantidad }}</td>
+            <td class="num">C$ {{ datos.monto_fmt }}</td>
+          </tr>
+          {% endfor %}
+          <tr class="total-fila">
+            <td>Total</td>
+            <td class="num">{{ total_facturas }}</td>
+            <td class="num">C$ {{ monto_total_fmt }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="firmas">
+      <div class="firma">
+        <div class="linea">Firma del conductor / repartidor</div>
+      </div>
+      <div class="firma">
+        <div class="linea">Firma de quien recibe / autoriza</div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

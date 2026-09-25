@@ -7,6 +7,7 @@ Regla de negocio (Cambio #2):
 - Los códigos de cliente "OCASIONAL" se agrupan en un único cliente genérico.
 """
 from collections import OrderedDict
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
 import openpyxl
@@ -178,13 +179,16 @@ def importar_excel(archivo, nombre_archivo=""):
 
     cache_clientes, cache_vendedores, cache_productos, cache_modalidades = {}, {}, {}, {}
 
-    facturas_creadas = 0
     facturas_omitidas_existentes = 0
-    lineas_creadas = 0
     clientes_creados_antes = Cliente.objects.count()
     productos_creados_antes = Producto.objects.count()
     vendedores_creados_antes = Vendedor.objects.count()
 
+    # Paso 1: preparar en memoria los encabezados de factura nuevos (sin
+    # tocar la base de datos todavía), resolviendo/creando cliente, vendedor,
+    # modalidad y producto por el camino (estos catálogos son pocos miles de
+    # registros como mucho, así que get_or_create uno por uno es aceptable).
+    facturas_a_crear = []  # lista de (numero_factura, Factura sin guardar, lineas_excel)
     for numero_factura, lineas in facturas_excel.items():
         if numero_factura in existentes:
             facturas_omitidas_existentes += 1
@@ -209,20 +213,7 @@ def importar_excel(archivo, nombre_archivo=""):
         subtotal_total = Decimal("0")
         impuestos_total = Decimal("0")
         total_total = Decimal("0")
-
-        factura = Factura.objects.create(
-            numero_factura=numero_factura,
-            serie=primera.get("Nombre de serie") or "",
-            cliente=cliente,
-            vendedor=vendedor,
-            modalidad_pago=modalidad,
-            fecha_emision=fecha_emision,
-            subtotal=0,
-            impuestos=0,
-            total=0,
-            origen_importacion=nombre_archivo,
-        )
-
+        lineas_preparadas = []
         for fila in lineas:
             producto = _obtener_producto(
                 cache_productos,
@@ -237,33 +228,59 @@ def importar_excel(archivo, nombre_archivo=""):
             precio_unitario = _dec(fila["PrecioConDesc"])
             subtotal_linea = _dec(fila["Total líneas"])
             iva_linea = _dec(fila["IVA"])
-
-            FacturaDetalle.objects.create(
-                factura=factura,
-                producto=producto,
-                cantidad_facturada=cantidad,
-                precio_lista=precio_lista,
-                descuento=descuento,
-                precio_unitario=precio_unitario,
-                subtotal=subtotal_linea,
-                iva=iva_linea,
-            )
             subtotal_total += subtotal_linea
             impuestos_total += iva_linea
             total_total += subtotal_linea + iva_linea
-            lineas_creadas += 1
+            lineas_preparadas.append(
+                dict(
+                    producto=producto,
+                    cantidad_facturada=cantidad,
+                    precio_lista=precio_lista,
+                    descuento=descuento,
+                    precio_unitario=precio_unitario,
+                    subtotal=subtotal_linea,
+                    iva=iva_linea,
+                )
+            )
 
-        factura.subtotal = subtotal_total
-        factura.impuestos = impuestos_total
-        factura.total = total_total
-        factura.save(update_fields=["subtotal", "impuestos", "total"])
-        facturas_creadas += 1
+        factura = Factura(
+            numero_factura=numero_factura,
+            serie=primera.get("Nombre de serie") or "",
+            cliente=cliente,
+            vendedor=vendedor,
+            modalidad_pago=modalidad,
+            fecha_emision=fecha_emision,
+            # Valor por defecto (Cambio #8): un día después de la fecha de
+            # emisión. El planeador la puede cambiar después, factura por
+            # factura, desde el listado de Facturas.
+            fecha_sugerida_entrega=fecha_emision + timedelta(days=1),
+            subtotal=subtotal_total,
+            impuestos=impuestos_total,
+            total=total_total,
+            origen_importacion=nombre_archivo,
+        )
+        facturas_a_crear.append((factura, lineas_preparadas))
+
+    # Paso 2: insertar todos los encabezados de factura en lotes grandes.
+    # bulk_create en PostgreSQL devuelve los ids asignados, así que después
+    # podemos usar factura.id para las líneas de detalle.
+    LOTE = 1000
+    Factura.objects.bulk_create(
+        [f for f, _ in facturas_a_crear], batch_size=LOTE
+    )
+
+    # Paso 3: insertar todas las líneas de detalle en lotes grandes.
+    detalles = []
+    for factura, lineas_preparadas in facturas_a_crear:
+        for datos in lineas_preparadas:
+            detalles.append(FacturaDetalle(factura=factura, **datos))
+    FacturaDetalle.objects.bulk_create(detalles, batch_size=LOTE)
 
     return {
         "facturas_en_excel": len(facturas_excel),
-        "facturas_creadas": facturas_creadas,
+        "facturas_creadas": len(facturas_a_crear),
         "facturas_omitidas_existentes": facturas_omitidas_existentes,
-        "lineas_creadas": lineas_creadas,
+        "lineas_creadas": len(detalles),
         "clientes_nuevos": Cliente.objects.count() - clientes_creados_antes,
         "productos_nuevos": Producto.objects.count() - productos_creados_antes,
         "vendedores_nuevos": Vendedor.objects.count() - vendedores_creados_antes,
