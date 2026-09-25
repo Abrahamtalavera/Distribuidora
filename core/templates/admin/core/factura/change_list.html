@@ -6,3 +6,8 @@
   </li>
   {{ block.super }}
 {% endblock %}
+
+{% block extrahead %}
+  {{ block.super }}
+  {{ filtro_columnas_json|json_script:"filtro-columnas-data" }}
+{% endblock %}

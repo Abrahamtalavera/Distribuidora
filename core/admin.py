@@ -1,5 +1,7 @@
 from django.contrib import admin, messages
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
+from django.contrib.admin.views.main import ChangeList
+from django.db.models import Q
 from django.urls import path
 from django.shortcuts import redirect, render
 
@@ -14,6 +16,43 @@ class FacturaDetalleInline(admin.TabularInline):
     readonly_fields = ("subtotal", "iva")
 
 
+# Cambio #11: filtros como desplegable de selección múltiple en los
+# encabezados de Sucursal, Municipio, Canal, Ruta y Carga (reemplazan el
+# panel lateral para esos cinco campos). Cada uno se controla con un
+# parámetro GET propio (por ejemplo "f_sucursal=Managua,León"), leído en
+# FacturaAdmin.get_queryset. Los demás filtros (estado de entrega, estado de
+# factura, modalidad de pago, fecha de emisión) siguen en el panel lateral,
+# sin cambios.
+FACTURA_FILTROS_TEXTO = {
+    "sucursal": {"lookup": "cliente__sucursal", "label": "Sucursal"},
+    "municipio": {"lookup": "cliente__municipio", "label": "Municipio"},
+    "canal": {"lookup": "cliente__canal", "label": "Canal"},
+}
+
+FACTURA_FILTRO_PARAMS_GET = ("f_sucursal", "f_municipio", "f_canal", "f_ruta", "f_carga")
+
+CARGA_SIN_ASIGNAR = "__none__"
+
+
+class FacturaChangeList(ChangeList):
+    """
+    El admin de Django, por defecto, toma cualquier parámetro de la URL que
+    no reconoce (que no sea de orden, búsqueda, paginación, etc.) e intenta
+    usarlo directamente como un filtro de campo del modelo — y si el nombre
+    no corresponde a ningún campo real, corta la petición con un redirect
+    "silencioso" que borra esos parámetros. Nuestros parámetros "f_sucursal",
+    "f_ruta", etc. no son campos reales (los interpretamos nosotros mismos en
+    FacturaAdmin.get_queryset), así que hay que decirle al admin que los
+    ignore por completo en vez de intentar validarlos como si fueran campos.
+    """
+
+    def get_filters_params(self, params=None):
+        lookup_params = super().get_filters_params(params)
+        for clave in FACTURA_FILTRO_PARAMS_GET:
+            lookup_params.pop(clave, None)
+        return lookup_params
+
+
 @admin.register(models.Factura)
 class FacturaAdmin(admin.ModelAdmin):
     list_display = (
@@ -22,6 +61,7 @@ class FacturaAdmin(admin.ModelAdmin):
         "sucursal",
         "municipio",
         "canal",
+        "ruta",
         "fecha_emision",
         "fecha_sugerida_entrega",
         "modalidad_pago",
@@ -36,16 +76,18 @@ class FacturaAdmin(admin.ModelAdmin):
         "estado_factura",
         "modalidad_pago",
         "fecha_emision",
-        "carga",
-        "cliente__ruta",
-        "cliente__sucursal",
-        "cliente__municipio",
-        "cliente__canal",
     )
     search_fields = ("numero_factura", "cliente__nombre", "cliente__codigo")
     inlines = [FacturaDetalleInline]
     change_list_template = "admin/core/factura/change_list.html"
     actions = ["agrupar_en_carga"]
+
+    class Media:
+        css = {"all": ("core/admin_dropdown_filters.css",)}
+        js = ("core/admin_dropdown_filters.js",)
+
+    def get_changelist(self, request, **kwargs):
+        return FacturaChangeList
 
     @admin.display(description="Sucursal", ordering="cliente__sucursal")
     def sucursal(self, obj):
@@ -58,6 +100,84 @@ class FacturaAdmin(admin.ModelAdmin):
     @admin.display(description="Canal", ordering="cliente__canal")
     def canal(self, obj):
         return obj.cliente.canal
+
+    @admin.display(description="Ruta", ordering="cliente__ruta__nombre")
+    def ruta(self, obj):
+        return obj.cliente.ruta
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+
+        for clave, cfg in FACTURA_FILTROS_TEXTO.items():
+            crudo = request.GET.get(f"f_{clave}")
+            if not crudo:
+                continue
+            valores = [v for v in crudo.split(",") if v]
+            if valores:
+                qs = qs.filter(**{f"{cfg['lookup']}__in": valores})
+
+        crudo_ruta = request.GET.get("f_ruta")
+        if crudo_ruta:
+            ids_ruta = [int(v) for v in crudo_ruta.split(",") if v.isdigit()]
+            if ids_ruta:
+                qs = qs.filter(cliente__ruta_id__in=ids_ruta)
+
+        crudo_carga = request.GET.get("f_carga")
+        if crudo_carga:
+            valores_carga = [v for v in crudo_carga.split(",") if v]
+            condicion = Q()
+            hay_condicion = False
+            if CARGA_SIN_ASIGNAR in valores_carga:
+                condicion |= Q(carga__isnull=True)
+                hay_condicion = True
+            ids_carga = [int(v) for v in valores_carga if v.isdigit()]
+            if ids_carga:
+                condicion |= Q(carga_id__in=ids_carga)
+                hay_condicion = True
+            if hay_condicion:
+                qs = qs.filter(condicion)
+
+        return qs
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        extra_context["filtro_columnas_json"] = self._opciones_filtros_dropdown()
+        return super().changelist_view(request, extra_context=extra_context)
+
+    def _opciones_filtros_dropdown(self):
+        def valores_distintos(campo):
+            return list(
+                models.Cliente.objects.exclude(**{campo: ""})
+                .order_by(campo)
+                .values_list(campo, flat=True)
+                .distinct()
+            )
+
+        rutas = [
+            {"value": str(r.id), "label": r.nombre}
+            for r in models.Ruta.objects.order_by("nombre")
+        ]
+        cargas = [{"value": CARGA_SIN_ASIGNAR, "label": "Sin carga asignada"}] + [
+            {"value": str(c.id), "label": f"CARGA-{c.id:04d}"}
+            for c in models.Carga.objects.order_by("-id")[:500]
+        ]
+
+        return {
+            "sucursal": {
+                "label": "Sucursal",
+                "options": [{"value": v, "label": v} for v in valores_distintos("sucursal")],
+            },
+            "municipio": {
+                "label": "Municipio",
+                "options": [{"value": v, "label": v} for v in valores_distintos("municipio")],
+            },
+            "canal": {
+                "label": "Canal",
+                "options": [{"value": v, "label": v} for v in valores_distintos("canal")],
+            },
+            "ruta": {"label": "Ruta", "options": rutas},
+            "carga": {"label": "Carga", "options": cargas},
+        }
 
     def get_urls(self):
         urls = super().get_urls()

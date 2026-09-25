@@ -1,0 +1,163 @@
+/*
+ * Cambio #11: filtros como desplegable de selección múltiple en los
+ * encabezados de la tabla de Facturas (Sucursal, Municipio, Canal, Ruta,
+ * Carga). El HTML de estos elementos se inyecta desde
+ * admin_dropdown_filters.js; este archivo solo define su apariencia.
+ */
+
+#result_list thead th.fdc-con-filtro {
+    position: relative;
+}
+
+.fdc-boton {
+    background: rgba(255, 255, 255, 0.25);
+    border: none;
+    color: inherit;
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    border-radius: 3px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    margin-left: 4px;
+    padding: 0;
+    line-height: 1;
+}
+
+.fdc-boton:hover {
+    background: rgba(255, 255, 255, 0.4);
+}
+
+.fdc-boton.fdc-activo {
+    background: #f7c948;
+    color: #4a3800;
+}
+
+.fdc-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: #fff;
+    color: #333;
+    border: 1px solid #ccc;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    width: 230px;
+    z-index: 100;
+    font-weight: normal;
+    font-size: 12px;
+    text-transform: none;
+}
+
+.fdc-dropdown.fdc-abierto {
+    display: block;
+}
+
+.fdc-dropdown .fdc-buscar {
+    padding: 8px;
+    border-bottom: 1px solid #eee;
+}
+
+.fdc-dropdown .fdc-buscar input {
+    width: 100%;
+    padding: 5px 7px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: 12px;
+    box-sizing: border-box;
+}
+
+.fdc-dropdown .fdc-opciones {
+    max-height: 220px;
+    overflow-y: auto;
+    padding: 6px 0;
+}
+
+.fdc-dropdown .fdc-opciones p.fdc-vacio {
+    padding: 6px 12px;
+    color: #888;
+    margin: 0;
+}
+
+.fdc-dropdown label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-weight: normal;
+}
+
+.fdc-dropdown label:hover {
+    background: #e8f1f5;
+}
+
+.fdc-dropdown .fdc-acciones {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-top: 1px solid #eee;
+}
+
+.fdc-acciones button {
+    font-size: 12px;
+    padding: 5px 10px;
+    border-radius: 3px;
+    border: none;
+    cursor: pointer;
+}
+
+.fdc-aplicar {
+    background: #417690;
+    color: #fff;
+}
+
+.fdc-limpiar {
+    background: none;
+    color: #a94442;
+}
+
+#fdc-chips-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 10px 0;
+}
+
+#fdc-chips-bar .fdc-chip {
+    background: #e8f1f5;
+    border: 1px solid #79aec8;
+    color: #2b4f5e;
+    font-size: 12px;
+    padding: 3px 8px 3px 10px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#fdc-chips-bar .fdc-chip button {
+    background: none;
+    border: none;
+    color: #2b4f5e;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 13px;
+    line-height: 1;
+    padding: 0;
+}
+
+#fdc-chips-bar .fdc-quitar-todos {
+    font-size: 12px;
+    color: #a94442;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 0;
+}
