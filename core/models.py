@@ -1,5 +1,12 @@
+import random
+
 from django.db import models
 from django.utils import timezone
+
+# Cambio #12: alfabeto usado para generar códigos de acceso cortos (carga) y
+# PINs (repartidor). Se excluyen caracteres que se confunden fácilmente al
+# leerlos en un celular: 0/O, 1/I/L.
+ALFABETO_CODIGO_ACCESO = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
 
 
 class ModalidadPago(models.Model):
@@ -38,6 +45,16 @@ class Vendedor(models.Model):
     tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default="VENDEDOR")
     telefono = models.CharField(max_length=30, blank=True)
     activo = models.BooleanField(default=True)
+    pin_acceso = models.CharField(
+        max_length=10,
+        blank=True,
+        verbose_name="PIN de acceso (repartidor)",
+        help_text=(
+            "Clave corta que usa el repartidor, junto con el código de la "
+            "carga, para entrar a registrar entregas desde su celular. "
+            "Solo aplica a repartidores."
+        ),
+    )
 
     class Meta:
         verbose_name_plural = "Vendedores"
@@ -89,6 +106,18 @@ class Carga(models.Model):
     km_final = models.DecimalField(max_digits=10, decimal_places=1, null=True, blank=True)
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default="PLANEADA")
     observaciones = models.TextField(blank=True)
+    codigo_acceso = models.CharField(
+        max_length=10,
+        unique=True,
+        blank=True,
+        editable=False,
+        help_text=(
+            "Código corto y no consecutivo (distinto del número de carga) "
+            "que, junto con el PIN del repartidor, permite entrar desde el "
+            "celular a registrar las entregas de esta carga. Se genera "
+            "automáticamente al crear la carga."
+        ),
+    )
     creado_en = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -98,6 +127,24 @@ class Carga(models.Model):
 
     def __str__(self):
         return f"Carga #{self.id} - {self.fecha_planeada}"
+
+    @staticmethod
+    def generar_codigo_acceso_unico():
+        """
+        Cambio #12: genera un código de acceso corto que no se repita con
+        ninguna carga existente. No usa el id consecutivo de la carga para
+        que no sea adivinable (CARGA-0042 sí es público/visible en reportes,
+        este código no).
+        """
+        while True:
+            candidato = "".join(random.choice(ALFABETO_CODIGO_ACCESO) for _ in range(5))
+            if not Carga.objects.filter(codigo_acceso=candidato).exists():
+                return candidato
+
+    def save(self, *args, **kwargs):
+        if not self.codigo_acceso:
+            self.codigo_acceso = self.generar_codigo_acceso_unico()
+        super().save(*args, **kwargs)
 
 
 class Cliente(models.Model):
@@ -206,6 +253,16 @@ class FacturaDetalle(models.Model):
     subtotal = models.DecimalField(max_digits=14, decimal_places=2)
     iva = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     cantidad_entregada = models.DecimalField(max_digits=12, decimal_places=3, default=0)
+    cantidad_devuelta = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        default=0,
+        help_text=(
+            "Cantidad de esta línea que se marcó como devuelta/rechazada en "
+            "alguna entrega (Cambio #12). Se resta del pendiente igual que "
+            "lo entregado, para no dejarla como 'pendiente' para siempre."
+        ),
+    )
 
     class Meta:
         verbose_name = "Línea de factura"
@@ -216,7 +273,7 @@ class FacturaDetalle(models.Model):
 
     @property
     def pendiente_entrega(self):
-        return self.cantidad_facturada - self.cantidad_entregada
+        return self.cantidad_facturada - self.cantidad_entregada - self.cantidad_devuelta
 
 
 class AreaResponsable(models.Model):

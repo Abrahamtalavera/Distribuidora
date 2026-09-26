@@ -292,8 +292,10 @@ class CargaAdmin(admin.ModelAdmin):
         "vehiculo",
         "estado",
         "total_facturas",
+        "codigo_acceso",
     )
     list_filter = ("estado", "fecha_planeada", "ruta", "conductor")
+    readonly_fields = ("codigo_acceso",)
     inlines = [FacturaEnCargaInline]
     change_form_template = "admin/core/carga/change_form.html"
 

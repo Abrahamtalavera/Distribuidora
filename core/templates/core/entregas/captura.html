@@ -1,0 +1,200 @@
+{% extends "core/entregas/base.html" %}
+
+{% block titulo %}Registrar entrega{% endblock %}
+
+{% block header %}
+<header class="app-header">
+  <div class="titulo">
+    <a class="btn-back" href="{% url 'entregas_lista' carga.id %}">&#8592;</a>
+    Registrar entrega
+  </div>
+  <div class="subtitulo">{{ factura.numero_factura }}</div>
+</header>
+{% endblock %}
+
+{% block content %}
+<form method="post" id="form-captura">
+  {% csrf_token %}
+
+  <div class="seccion factura-header-info">
+    <div class="linea"><span class="label">Cliente</span><span>{{ factura.cliente.nombre }}</span></div>
+    <div class="linea"><span class="label">Municipio</span><span>{{ factura.cliente.municipio }}</span></div>
+    <div class="linea"><span class="label">Modalidad</span><span>
+      {% if es_contado %}<span class="badge badge-contado">Contado</span>{% else %}<span class="badge badge-credito">{{ factura.modalidad_pago.nombre }}</span>{% endif %}
+    </span></div>
+    <div class="linea"><span class="label">Total factura</span><span>C$ {{ factura.total_fmt }}</span></div>
+  </div>
+
+  <div class="seccion">
+    <h3>Acción rápida</h3>
+    <div class="acciones-rapidas">
+      <button type="button" class="btn-rapido todo" id="btnTodo">Todo entregado</button>
+      <button type="button" class="btn-rapido nada" id="btnNada">Nada entregado</button>
+    </div>
+    <div class="campo-form oculto" id="bloqueMotivoGeneral">
+      <label>Motivo general de la visita</label>
+      <select name="motivo_general">
+        <option value="">Selecciona un motivo...</option>
+        {% for m in motivos %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div class="seccion">
+    <h3>Productos</h3>
+    <div id="lineasContainer">
+      {% for linea in lineas %}
+      <div class="linea-producto" data-linea-id="{{ linea.id }}" data-pendiente="{{ linea.pendiente_str }}">
+        <div class="nombre-producto">{{ linea.producto.nombre }}</div>
+        <div class="cant-facturada">Facturado: {{ linea.facturada_str }} · Pendiente: {{ linea.pendiente_str }}</div>
+        <div class="fila-cantidades">
+          <div class="campo-cantidad">
+            <label>Entregada</label>
+            <input type="number" class="input-entregada" name="ent_{{ linea.id }}" min="0" max="{{ linea.pendiente_str }}" step="0.001" value="{{ linea.pendiente_str }}">
+          </div>
+          <div class="campo-cantidad">
+            <label>Devuelta</label>
+            <input type="number" class="devuelta" value="0" readonly tabindex="-1">
+          </div>
+        </div>
+        <div class="motivo-linea oculto">
+          <select name="motivo_{{ linea.id }}">
+            <option value="">Motivo de la devolución...</option>
+            {% for m in motivos %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      {% empty %}
+      <p>Esta factura no tiene productos pendientes de entregar.</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="seccion">
+    <h3>Observaciones</h3>
+    <div class="campo-form">
+      <textarea name="observaciones" placeholder="Notas de la visita (opcional)"></textarea>
+    </div>
+  </div>
+
+  {% if es_contado %}
+  <div class="seccion seccion-cobro">
+    <h3>Cobro (factura de contado)</h3>
+    <div class="campo-form">
+      <label style="display:flex; align-items:center; gap:6px;">
+        <input type="checkbox" name="registrar_cobro" value="1" id="chkCobro" checked style="width:auto;">
+        Registrar cobro ahora
+      </label>
+    </div>
+    <div id="bloqueCobro">
+      <div class="campo-form monto-grande">
+        <label>Monto cobrado</label>
+        <input type="number" name="monto_cobrado" id="montoCobrado" value="{{ factura.total_raw }}" step="0.01">
+      </div>
+      <div class="campo-form">
+        <label>Forma de pago</label>
+        <select name="forma_pago" id="formaPago">
+          <option value="EFECTIVO" selected>Efectivo</option>
+          <option value="TRANSFERENCIA">Transferencia</option>
+          <option value="CHEQUE">Cheque</option>
+          <option value="TARJETA">Tarjeta</option>
+        </select>
+      </div>
+      <div class="campo-form oculto" id="bloqueReferencia">
+        <label>Referencia</label>
+        <input type="text" name="referencia" placeholder="Número de referencia">
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</form>
+{% endblock %}
+
+{% block barra_inferior %}
+<div class="barra-inferior">
+  <button class="btn-guardar" type="submit" form="form-captura">Guardar entrega</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  "use strict";
+
+  function actualizarLinea(bloque) {
+    var pendiente = parseFloat(bloque.dataset.pendiente || "0");
+    var inputEnt = bloque.querySelector(".input-entregada");
+    var inputDev = bloque.querySelector(".devuelta");
+    var motivoBloque = bloque.querySelector(".motivo-linea");
+    var entregada = parseFloat(inputEnt.value);
+    if (isNaN(entregada)) entregada = 0;
+    if (entregada < 0) entregada = 0;
+    if (entregada > pendiente) entregada = pendiente;
+    var devuelta = Math.max(0, pendiente - entregada);
+    inputDev.value = devuelta;
+    inputDev.classList.toggle("hay-devolucion", devuelta > 0);
+    motivoBloque.classList.toggle("oculto", devuelta <= 0);
+  }
+
+  var bloques = document.querySelectorAll(".linea-producto");
+  bloques.forEach(function (bloque) {
+    var inputEnt = bloque.querySelector(".input-entregada");
+    inputEnt.addEventListener("input", function () {
+      actualizarLinea(bloque);
+    });
+    actualizarLinea(bloque);
+  });
+
+  var btnTodo = document.getElementById("btnTodo");
+  var btnNada = document.getElementById("btnNada");
+  var bloqueMotivoGeneral = document.getElementById("bloqueMotivoGeneral");
+
+  function marcarActivo(boton) {
+    [btnTodo, btnNada].forEach(function (b) {
+      if (b) b.classList.remove("activo");
+    });
+    if (boton) boton.classList.add("activo");
+  }
+
+  if (btnTodo) {
+    btnTodo.addEventListener("click", function () {
+      bloques.forEach(function (bloque) {
+        var inputEnt = bloque.querySelector(".input-entregada");
+        inputEnt.value = bloque.dataset.pendiente;
+        actualizarLinea(bloque);
+      });
+      marcarActivo(btnTodo);
+      if (bloqueMotivoGeneral) bloqueMotivoGeneral.classList.add("oculto");
+    });
+  }
+
+  if (btnNada) {
+    btnNada.addEventListener("click", function () {
+      bloques.forEach(function (bloque) {
+        var inputEnt = bloque.querySelector(".input-entregada");
+        inputEnt.value = 0;
+        actualizarLinea(bloque);
+      });
+      marcarActivo(btnNada);
+      if (bloqueMotivoGeneral) bloqueMotivoGeneral.classList.remove("oculto");
+    });
+  }
+
+  var formaPago = document.getElementById("formaPago");
+  var bloqueReferencia = document.getElementById("bloqueReferencia");
+  if (formaPago) {
+    formaPago.addEventListener("change", function () {
+      bloqueReferencia.classList.toggle("oculto", formaPago.value === "EFECTIVO");
+    });
+  }
+
+  var chkCobro = document.getElementById("chkCobro");
+  var bloqueCobro = document.getElementById("bloqueCobro");
+  if (chkCobro && bloqueCobro) {
+    chkCobro.addEventListener("change", function () {
+      bloqueCobro.style.display = chkCobro.checked ? "" : "none";
+    });
+  }
+})();
+</script>
+{% endblock %}

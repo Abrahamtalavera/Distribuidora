@@ -1,0 +1,35 @@
+{% extends "core/entregas/base.html" %}
+
+{% block titulo %}Acceso repartidor{% endblock %}
+
+{% block header %}
+<header class="app-header">
+  <div class="titulo">Acceso repartidor</div>
+  <div class="subtitulo">Escribe el código de tu carga y tu PIN</div>
+</header>
+{% endblock %}
+
+{% block content %}
+<form method="post" id="form-acceso">
+  {% csrf_token %}
+  <div class="seccion">
+    <div class="campo-form">
+      <label>Código de carga</label>
+      <input type="text" name="codigo_carga" placeholder="Ej: 7K2M9" autocapitalize="characters" maxlength="10" autofocus>
+    </div>
+    <div class="campo-form">
+      <label>Tu PIN</label>
+      <input type="password" name="pin_repartidor" placeholder="••••" inputmode="numeric" maxlength="10">
+    </div>
+    {% if error %}
+      <div class="campo-form" style="color:var(--danger); font-size:13px;">{{ error }}</div>
+    {% endif %}
+  </div>
+</form>
+{% endblock %}
+
+{% block barra_inferior %}
+<div class="barra-inferior">
+  <button class="btn-guardar" type="submit" form="form-acceso">Entrar</button>
+</div>
+{% endblock %}

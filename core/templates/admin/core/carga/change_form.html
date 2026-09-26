@@ -3,6 +3,9 @@
 {% block object-tools-items %}
   {% if original %}
     <li>
+      <a href="{% url 'entregas_lista' original.pk %}" class="button" target="_blank">Registrar entregas</a>
+    </li>
+    <li>
       <a href="{% url 'admin:core_carga_imprimir' original.pk %}" class="button" target="_blank">Imprimir reporte</a>
     </li>
   {% endif %}

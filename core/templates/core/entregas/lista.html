@@ -1,0 +1,51 @@
+{% extends "core/entregas/base.html" %}
+
+{% block titulo %}Carga #{{ carga.id }}{% endblock %}
+
+{% block header %}
+<header class="app-header">
+  <div class="titulo">
+    Carga #{{ carga.id }}
+    {% if not es_staff %}
+      <a class="btn-back" style="margin-left:auto;" href="{% url 'entregas_salir' carga.id %}" title="Salir">&#8594;</a>
+    {% endif %}
+  </div>
+  <div class="subtitulo">
+    {% if carga.ruta %}{{ carga.ruta.nombre }}{% else %}Sin ruta{% endif %}
+    · {{ carga.fecha_planeada|date:"d/m/Y" }}
+    · {{ entregadas }} de {{ total_facturas }} facturas entregadas
+  </div>
+  <div class="progreso-bar"><div class="progreso-fill" style="width:{{ porcentaje }}%"></div></div>
+</header>
+{% endblock %}
+
+{% block content %}
+{% for factura in facturas %}
+  <a class="factura-card" href="{% url 'entregas_captura' carga.id factura.id %}" style="display:block; text-decoration:none; color:inherit;">
+    <div class="fila-top">
+      <div>
+        <div class="numero">{{ factura.numero_factura }}</div>
+        <div class="cliente">{{ factura.cliente.nombre }}</div>
+        <div class="detalle-muted">{{ factura.cliente.municipio }}</div>
+      </div>
+      <div class="total">C$ {{ factura.total_fmt }}</div>
+    </div>
+    <div class="fila-bottom">
+      {% if factura.modalidad_pago.codigo == "CONTADO" %}
+        <span class="badge badge-contado">Contado</span>
+      {% else %}
+        <span class="badge badge-credito">{{ factura.modalidad_pago.nombre }}</span>
+      {% endif %}
+      {% if factura.estado_entrega == "PENDIENTE" %}
+        <span class="badge badge-pendiente">Pendiente</span>
+      {% elif factura.estado_entrega == "PARCIAL" %}
+        <span class="badge badge-parcial">Parcial</span>
+      {% else %}
+        <span class="badge badge-completa">Completa</span>
+      {% endif %}
+    </div>
+  </a>
+{% empty %}
+  <p>No hay facturas activas asignadas a esta carga.</p>
+{% endfor %}
+{% endblock %}
