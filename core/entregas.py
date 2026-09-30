@@ -1,5 +1,5 @@
 """
-Cambio #12: lógica de negocio para registrar una entrega (parcial o total)
+Cambios #12 y #13: lógica de negocio para registrar una entrega (parcial o total)
 de una factura, incluida la actualización de las cantidades entregadas /
 devueltas, el estado de entrega de la factura, y — si corresponde — el
 registro del cobro de una factura de contado en la misma operación.
@@ -9,11 +9,15 @@ poder probarla con tests sin pasar por HTTP, siguiendo el mismo patrón que
 core/importador.py.
 """
 
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
 
 from core.models import CarteraCobro, Entrega, EntregaDetalle, Pago
+
+
+MAX_PAGOS = 3
+CENTAVO = Decimal("0.01")
 
 
 class RegistroEntregaError(Exception):
@@ -40,7 +44,7 @@ def registrar_entrega(
     motivo_general_id=None,
     motivo_por_linea=None,
     observaciones="",
-    cobro=None,
+    pagos=None,
 ):
     """
     Registra una entrega para `factura`.
@@ -52,12 +56,12 @@ def registrar_entrega(
       para superar lo que en realidad estaba pendiente.
     - motivo_por_linea: dict opcional {factura_detalle_id: motivo_devolucion_id}
       para las líneas donde queda una cantidad_devuelta > 0.
-    - cobro: dict opcional {"monto", "forma_pago", "referencia", "observaciones"}.
-      Solo tiene efecto si factura.modalidad_pago.codigo == "CONTADO". La
-      CarteraCobro de esa factura se crea en este momento si todavía no
-      existe (Cambio #12: se decidió crearla "sobre la marcha" al primer
-      cobro, en vez de crear una cartera para cada factura desde que se
-      importa).
+    - pagos: lista opcional (Cambio #13: hasta 3) de dicts
+      {"monto", "forma_pago", "referencia"}. Aplica a facturas de contado y
+      de crédito (en crédito es un abono). La CarteraCobro se crea "sobre la
+      marcha" al primer pago (Cambio #12); si ya existe, se recalcula su
+      deuda y saldo en cada entrega, aunque no traiga pagos, para que las
+      devoluciones bajen lo que el cliente debe (Cambio #13).
 
     Devuelve la Entrega creada.
     """
@@ -129,28 +133,95 @@ def registrar_entrega(
     entrega.tipo_entrega = tipo_entrega
     entrega.save(update_fields=["tipo_entrega"])
 
-    if cobro and factura.modalidad_pago.codigo == "CONTADO":
-        monto = _a_decimal(cobro.get("monto"))
-        if monto > 0:
-            cartera, _creada = CarteraCobro.objects.get_or_create(
-                factura=factura,
-                defaults={
-                    "modalidad_pago": factura.modalidad_pago,
-                    "monto_total": factura.total,
-                    "saldo_pendiente": factura.total,
-                    "estado": "VIGENTE",
-                },
-            )
+    pagos_validos = _normalizar_pagos(pagos)
+    cartera_existente = CarteraCobro.objects.filter(factura=factura).first()
+    if pagos_validos or cartera_existente:
+        cartera = cartera_existente or CarteraCobro.objects.create(
+            factura=factura,
+            modalidad_pago=factura.modalidad_pago,
+            monto_total=factura.total,
+            saldo_pendiente=factura.total,
+            estado="VIGENTE",
+        )
+        for pago in pagos_validos:
             Pago.objects.create(
                 cartera=cartera,
-                monto=monto,
-                forma_pago=cobro.get("forma_pago") or "EFECTIVO",
-                referencia=cobro.get("referencia", ""),
+                monto=pago["monto"],
+                forma_pago=pago["forma_pago"],
+                referencia=pago["referencia"],
                 cobrador=repartidor,
-                observaciones=cobro.get("observaciones", ""),
+                observaciones=pago.get("observaciones", ""),
             )
-            cartera.saldo_pendiente = max(Decimal("0"), cartera.saldo_pendiente - monto)
-            cartera.estado = "PAGADA" if cartera.saldo_pendiente <= 0 else cartera.estado
-            cartera.save(update_fields=["saldo_pendiente", "estado"])
+        recalcular_cartera(cartera)
 
     return entrega
+
+
+def valor_unitario(linea):
+    """Valor por unidad de una línea de factura, con IVA incluido."""
+    if not linea.cantidad_facturada:
+        return Decimal("0")
+    return (linea.subtotal + linea.iva) / linea.cantidad_facturada
+
+
+def valor_devuelto(factura):
+    """Valor (con IVA) de todo lo devuelto hasta ahora en la factura."""
+    total = sum(
+        (l.cantidad_devuelta * valor_unitario(l) for l in factura.lineas.all()),
+        Decimal("0"),
+    )
+    return total.quantize(CENTAVO, rounding=ROUND_HALF_UP)
+
+
+def valor_entregado(factura):
+    """Valor (con IVA) de todo lo entregado hasta ahora en la factura."""
+    total = sum(
+        (l.cantidad_entregada * valor_unitario(l) for l in factura.lineas.all()),
+        Decimal("0"),
+    )
+    return total.quantize(CENTAVO, rounding=ROUND_HALF_UP)
+
+
+def recalcular_cartera(cartera):
+    """
+    Cambio #13: la deuda de la factura es el total facturado MENOS el valor de
+    lo devuelto (el cliente no debe lo que no recibió). El saldo es esa deuda
+    menos todos los pagos registrados. Se recalcula desde cero cada vez, para
+    que no se acumulen errores de redondeo entre entregas parciales.
+    """
+    factura = cartera.factura
+    deuda = max(Decimal("0"), factura.total - valor_devuelto(factura))
+    pagado = sum((p.monto for p in cartera.pagos.all()), Decimal("0"))
+    cartera.monto_total = deuda
+    cartera.saldo_pendiente = max(Decimal("0"), deuda - pagado)
+    if cartera.estado != "ANULADA":
+        if cartera.saldo_pendiente <= 0:
+            cartera.estado = "PAGADA"
+        elif cartera.estado == "PAGADA":
+            cartera.estado = "VIGENTE"
+    cartera.save(update_fields=["monto_total", "saldo_pendiente", "estado"])
+
+
+def _normalizar_pagos(pagos):
+    """
+    Recibe la lista de pagos capturados en pantalla (hasta MAX_PAGOS) y
+    devuelve solo los válidos: monto > 0 y forma de pago conocida. Cualquier
+    fila de más se ignora.
+    """
+    formas_validas = {codigo for codigo, _ in Pago.FORMA_CHOICES}
+    resultado = []
+    for pago in (pagos or [])[:MAX_PAGOS]:
+        monto = _a_decimal(pago.get("monto")).quantize(CENTAVO, rounding=ROUND_HALF_UP)
+        if monto <= 0:
+            continue
+        forma = pago.get("forma_pago") or "EFECTIVO"
+        if forma not in formas_validas:
+            forma = "EFECTIVO"
+        referencia = (pago.get("referencia") or "").strip()[:50]
+        if forma == "EFECTIVO":
+            referencia = ""
+        resultado.append(
+            {"monto": monto, "forma_pago": forma, "referencia": referencia,
+             "observaciones": pago.get("observaciones", "")}
+        )
+    return resultado

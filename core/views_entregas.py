@@ -14,8 +14,14 @@ from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
 
-from core.entregas import RegistroEntregaError, registrar_entrega
-from core.models import Carga, Factura, MotivoDevolucion
+from core.entregas import (
+    MAX_PAGOS,
+    RegistroEntregaError,
+    registrar_entrega,
+    valor_entregado,
+    valor_unitario,
+)
+from core.models import Carga, CarteraCobro, Factura, MotivoDevolucion, Pago
 
 SESSION_KEY_CARGA = "entrega_carga_id"
 
@@ -145,19 +151,22 @@ def entregas_captura_view(request, carga_id, factura_id):
         motivo_general_id = request.POST.get("motivo_general") or None
         observaciones = request.POST.get("observaciones", "").strip()
 
-        cobro = None
-        if es_contado and request.POST.get("registrar_cobro") == "1":
-            monto_crudo = request.POST.get("monto_cobrado", "").strip()
-            try:
-                monto = Decimal(monto_crudo) if monto_crudo else Decimal("0")
-            except InvalidOperation:
-                monto = Decimal("0")
-            if monto > 0:
-                cobro = {
-                    "monto": monto,
-                    "forma_pago": request.POST.get("forma_pago", "EFECTIVO"),
-                    "referencia": request.POST.get("referencia", "").strip(),
-                }
+        pagos = []
+        if request.POST.get("registrar_cobro") == "1":
+            for i in range(MAX_PAGOS):
+                monto_crudo = request.POST.get(f"pago_monto_{i}", "").strip()
+                try:
+                    monto = Decimal(monto_crudo) if monto_crudo else Decimal("0")
+                except InvalidOperation:
+                    monto = Decimal("0")
+                if monto > 0:
+                    pagos.append(
+                        {
+                            "monto": monto,
+                            "forma_pago": request.POST.get(f"pago_forma_{i}", "EFECTIVO"),
+                            "referencia": request.POST.get(f"pago_ref_{i}", "").strip(),
+                        }
+                    )
 
         try:
             registrar_entrega(
@@ -167,14 +176,19 @@ def entregas_captura_view(request, carga_id, factura_id):
                 motivo_general_id=motivo_general_id,
                 motivo_por_linea=motivo_por_linea,
                 observaciones=observaciones,
-                cobro=cobro,
+                pagos=pagos,
             )
         except RegistroEntregaError as exc:
             messages.error(request, str(exc))
         else:
             texto = f"Entrega guardada para la factura {factura.numero_factura}."
-            if cobro:
-                texto += " Cobro registrado."
+            if pagos:
+                total_pagos = sum((p["monto"] for p in pagos), Decimal("0"))
+                etiqueta = "Cobro" if es_contado else "Abono"
+                texto += (
+                    f" {etiqueta} registrado: C$ {_moneda(total_pagos)}"
+                    f" en {len(pagos)} forma{'s' if len(pagos) > 1 else ''} de pago."
+                )
             messages.success(request, texto)
         return redirect("entregas_lista", carga_id=carga.id)
 
@@ -182,8 +196,18 @@ def entregas_captura_view(request, carga_id, factura_id):
     for linea in lineas:
         linea.pendiente_str = _cantidad_plana(linea.pendiente_entrega)
         linea.facturada_str = _cantidad_plana(linea.cantidad_facturada)
+        # Cambio #13: valor por unidad (con IVA), para que la pantalla calcule
+        # en vivo el monto a cobrar según lo que de verdad se entrega.
+        linea.valor_unit_str = f"{valor_unitario(linea):.6f}"
     factura.total_fmt = _moneda(factura.total)
-    factura.total_raw = _cantidad_plana(factura.total)
+
+    # Cambio #13: lo ya entregado en visitas anteriores y aún no pagado se
+    # suma al monto a cobrar de esta visita.
+    cartera = CarteraCobro.objects.filter(factura=factura).first()
+    pagado_antes = (
+        sum((p.monto for p in cartera.pagos.all()), Decimal("0")) if cartera else Decimal("0")
+    )
+    base_cobro = max(Decimal("0"), valor_entregado(factura) - pagado_antes)
 
     return render(
         request,
@@ -194,5 +218,9 @@ def entregas_captura_view(request, carga_id, factura_id):
             "lineas": lineas,
             "motivos": motivos,
             "es_contado": es_contado,
+            "base_cobro": f"{base_cobro:.2f}",
+            "pagado_antes_fmt": _moneda(pagado_antes) if pagado_antes else "",
+            "formas_pago": Pago.FORMA_CHOICES,
+            "max_pagos": MAX_PAGOS,
         },
     )

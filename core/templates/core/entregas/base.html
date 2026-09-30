@@ -242,6 +242,27 @@
     color: var(--primary-dark);
   }
 
+  /* Cambio #13: varias formas de pago */
+  .a-cobrar { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: #fff; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+  .a-cobrar .lbl { font-size: 12px; color: var(--muted); }
+  .a-cobrar .sub { font-size: 11px; color: var(--muted); }
+  .a-cobrar .monto { font-size: 20px; font-weight: 700; color: var(--primary-dark); white-space: nowrap; }
+  .pago-fila { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+  .pago-fila .top { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); margin-bottom: 6px; min-height: 20px; }
+  .btn-quitar { border: none; background: none; color: var(--danger); font-size: 20px; cursor: pointer; line-height: 1; padding: 0 4px; }
+  .pago-fila .campos { display: flex; gap: 8px; }
+  .pago-fila select, .pago-fila input { width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; font-family: inherit; }
+  .pago-fila .monto-in { font-size: 16px; font-weight: 700; color: var(--primary-dark); }
+  .pago-fila .ref { margin-top: 8px; }
+  .btn-agregar { width: 100%; padding: 10px; border: 1px dashed var(--primary); background: #fff; color: var(--primary); border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; }
+  .btn-agregar:disabled { opacity: .45; cursor: default; }
+  .resumen-pagos { margin-top: 10px; background: #fff; border-radius: 8px; padding: 10px 12px; font-size: 14px; }
+  .resumen-pagos .r { display: flex; justify-content: space-between; padding: 3px 0; }
+  .estado-cuadre { margin-top: 6px; padding: 7px 10px; border-radius: 6px; font-size: 13px; font-weight: 600; text-align: center; }
+  .estado-cuadre.ok { background: var(--ok-bg); color: var(--ok); }
+  .estado-cuadre.falta { background: var(--warn-bg); color: var(--warn); }
+  .estado-cuadre.sobra { background: #fdecea; color: var(--danger); }
+
   .barra-inferior {
     position: fixed;
     bottom: 0;

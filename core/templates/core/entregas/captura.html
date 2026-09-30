@@ -44,7 +44,7 @@
     <h3>Productos</h3>
     <div id="lineasContainer">
       {% for linea in lineas %}
-      <div class="linea-producto" data-linea-id="{{ linea.id }}" data-pendiente="{{ linea.pendiente_str }}">
+      <div class="linea-producto" data-linea-id="{{ linea.id }}" data-pendiente="{{ linea.pendiente_str }}" data-valor-unit="{{ linea.valor_unit_str }}">
         <div class="nombre-producto">{{ linea.producto.nombre }}</div>
         <div class="cant-facturada">Facturado: {{ linea.facturada_str }} · Pendiente: {{ linea.pendiente_str }}</div>
         <div class="fila-cantidades">
@@ -77,36 +77,43 @@
     </div>
   </div>
 
-  {% if es_contado %}
-  <div class="seccion seccion-cobro">
-    <h3>Cobro (factura de contado)</h3>
+  <div class="seccion seccion-cobro" id="seccionCobro" data-base="{{ base_cobro }}" data-contado="{% if es_contado %}1{% else %}0{% endif %}" data-max="{{ max_pagos }}">
+    <h3>{% if es_contado %}Cobro (factura de contado){% else %}Abono (factura de crédito){% endif %}</h3>
     <div class="campo-form">
       <label style="display:flex; align-items:center; gap:6px;">
-        <input type="checkbox" name="registrar_cobro" value="1" id="chkCobro" checked style="width:auto;">
-        Registrar cobro ahora
+        <input type="checkbox" name="registrar_cobro" value="1" id="chkCobro" {% if es_contado %}checked{% endif %} style="width:auto;">
+        {% if es_contado %}Registrar cobro ahora{% else %}El cliente dio un abono{% endif %}
       </label>
     </div>
-    <div id="bloqueCobro">
-      <div class="campo-form monto-grande">
-        <label>Monto cobrado</label>
-        <input type="number" name="monto_cobrado" id="montoCobrado" value="{{ factura.total_raw }}" step="0.01">
+    <div id="bloqueCobro"{% if not es_contado %} style="display:none"{% endif %}>
+      <div class="a-cobrar">
+        <div>
+          <div class="lbl">A cobrar (valor entregado)</div>
+          <div class="sub">{% if pagado_antes_fmt %}Ya pagado antes: C$ {{ pagado_antes_fmt }}{% elif es_contado %}Se ajusta solo si hay devoluciones{% else %}El abono es opcional; el resto queda en cartera{% endif %}</div>
+        </div>
+        <div class="monto" id="montoCobrar">C$ 0.00</div>
       </div>
-      <div class="campo-form">
-        <label>Forma de pago</label>
-        <select name="forma_pago" id="formaPago">
-          <option value="EFECTIVO" selected>Efectivo</option>
-          <option value="TRANSFERENCIA">Transferencia</option>
-          <option value="CHEQUE">Cheque</option>
-          <option value="TARJETA">Tarjeta</option>
-        </select>
+      <div id="pagos">
       </div>
-      <div class="campo-form oculto" id="bloqueReferencia">
-        <label>Referencia</label>
-        <input type="text" name="referencia" placeholder="Número de referencia">
+      <button type="button" class="btn-agregar" id="btnAgregar">+ Agregar otra forma de pago</button>
+      <div class="resumen-pagos">
+        <div class="r"><span>Suma de pagos</span><b id="sumaPagos">C$ 0.00</b></div>
+        <div class="estado-cuadre ok" id="estadoCuadre">Cuadra exacto</div>
       </div>
     </div>
+    <template id="tplPago">
+      <div class="pago-fila">
+        <div class="top"><span class="num"></span><button type="button" class="btn-quitar" title="Quitar">&times;</button></div>
+        <div class="campos">
+          <select class="forma">
+            {% for codigo, nombre in formas_pago %}<option value="{{ codigo }}">{{ nombre }}</option>{% endfor %}
+          </select>
+          <input type="number" class="monto-in" step="0.01" min="0" placeholder="0.00">
+        </div>
+        <input type="text" class="ref oculto" maxlength="50" placeholder="Referencia (n.º transferencia, cheque, voucher)">
+      </div>
+    </template>
   </div>
-  {% endif %}
 </form>
 {% endblock %}
 
@@ -180,13 +187,105 @@
     });
   }
 
-  var formaPago = document.getElementById("formaPago");
-  var bloqueReferencia = document.getElementById("bloqueReferencia");
-  if (formaPago) {
-    formaPago.addEventListener("change", function () {
-      bloqueReferencia.classList.toggle("oculto", formaPago.value === "EFECTIVO");
-    });
+  // ---- Cambio #13: hasta 3 formas de pago ----
+  var seccion = document.getElementById("seccionCobro");
+  var pagosDiv = document.getElementById("pagos");
+  var tpl = document.getElementById("tplPago");
+  var btnAgregar = document.getElementById("btnAgregar");
+  var MAX = parseInt(seccion.dataset.max || "3", 10);
+  var esContado = seccion.dataset.contado === "1";
+  var base = parseFloat(seccion.dataset.base || "0") || 0;
+  var montoEditadoAMano = false;
+
+  function fmt(n) {
+    return "C$ " + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
+  function redondear(n) { return Math.round(n * 100) / 100; }
+
+  function montoACobrar() {
+    var total = base;
+    bloques.forEach(function (bloque) {
+      var pendiente = parseFloat(bloque.dataset.pendiente || "0");
+      var unit = parseFloat(bloque.dataset.valorUnit || "0");
+      var v = parseFloat(bloque.querySelector(".input-entregada").value);
+      if (isNaN(v) || v < 0) v = 0;
+      if (v > pendiente) v = pendiente;
+      total += v * unit;
+    });
+    return redondear(total);
+  }
+
+  function renumerar() {
+    var filas = pagosDiv.querySelectorAll(".pago-fila");
+    filas.forEach(function (f, i) {
+      f.querySelector(".num").textContent = "Pago " + (i + 1) + " de " + filas.length;
+      f.querySelector(".forma").name = "pago_forma_" + i;
+      f.querySelector(".monto-in").name = "pago_monto_" + i;
+      f.querySelector(".ref").name = "pago_ref_" + i;
+      f.querySelector(".btn-quitar").classList.toggle("oculto", filas.length === 1);
+    });
+    btnAgregar.disabled = filas.length >= MAX;
+    btnAgregar.textContent = filas.length >= MAX ? "Máximo " + MAX + " formas de pago" : "+ Agregar otra forma de pago";
+  }
+
+  function recalcularCobro() {
+    var aCobrar = montoACobrar();
+    document.getElementById("montoCobrar").textContent = fmt(aCobrar);
+    var suma = 0;
+    pagosDiv.querySelectorAll(".monto-in").forEach(function (i) {
+      var v = parseFloat(i.value); if (!isNaN(v) && v > 0) suma += v;
+    });
+    suma = redondear(suma);
+    document.getElementById("sumaPagos").textContent = fmt(suma);
+    var est = document.getElementById("estadoCuadre");
+    var dif = redondear(aCobrar - suma);
+    if (dif === 0) { est.className = "estado-cuadre ok"; est.textContent = "Cuadra exacto"; }
+    else if (dif > 0) { est.className = "estado-cuadre falta"; est.textContent = "Faltan " + fmt(dif) + " — quedarán pendientes en cartera"; }
+    else { est.className = "estado-cuadre sobra"; est.textContent = "Sobran " + fmt(-dif) + " — revisa los montos"; }
+  }
+
+  function agregarPago(monto) {
+    var n = pagosDiv.querySelectorAll(".pago-fila").length;
+    if (n >= MAX) return;
+    var fila = tpl.content.firstElementChild.cloneNode(true);
+    pagosDiv.appendChild(fila);
+    var sel = fila.querySelector(".forma");
+    var ref = fila.querySelector(".ref");
+    var inp = fila.querySelector(".monto-in");
+    if (monto != null) inp.value = monto.toFixed(2);
+    if (n > 0) {
+      var usadas = Array.prototype.map.call(pagosDiv.querySelectorAll(".forma"), function (s) { return s.value; });
+      for (var k = 0; k < sel.options.length; k++) {
+        if (usadas.indexOf(sel.options[k].value) < 0) { sel.value = sel.options[k].value; break; }
+      }
+    }
+    function refVisible() { ref.classList.toggle("oculto", sel.value === "EFECTIVO"); }
+    sel.addEventListener("change", refVisible);
+    refVisible();
+    inp.addEventListener("input", function () { montoEditadoAMano = true; recalcularCobro(); });
+    fila.querySelector(".btn-quitar").addEventListener("click", function () {
+      fila.remove(); montoEditadoAMano = true; renumerar(); recalcularCobro();
+    });
+    renumerar();
+    recalcularCobro();
+  }
+
+  // Mientras haya un solo pago y no se haya tocado a mano, su monto sigue
+  // al valor de lo entregado (solo contado; en crédito el abono lo escribe el repartidor).
+  function alCambiarCantidades() {
+    var filas = pagosDiv.querySelectorAll(".pago-fila");
+    if (esContado && !montoEditadoAMano && filas.length === 1) {
+      filas[0].querySelector(".monto-in").value = montoACobrar().toFixed(2);
+    }
+    recalcularCobro();
+  }
+  bloques.forEach(function (bloque) {
+    bloque.querySelector(".input-entregada").addEventListener("input", alCambiarCantidades);
+  });
+  if (btnTodo) btnTodo.addEventListener("click", alCambiarCantidades);
+  if (btnNada) btnNada.addEventListener("click", alCambiarCantidades);
+  btnAgregar.addEventListener("click", function () { agregarPago(null); });
+  agregarPago(esContado ? montoACobrar() : null);
 
   var chkCobro = document.getElementById("chkCobro");
   var bloqueCobro = document.getElementById("bloqueCobro");
