@@ -165,6 +165,7 @@ def entregas_captura_view(request, carga_id, factura_id):
                             "monto": monto,
                             "forma_pago": request.POST.get(f"pago_forma_{i}", "EFECTIVO"),
                             "referencia": request.POST.get(f"pago_ref_{i}", "").strip(),
+                            "numero_recibo": request.POST.get(f"pago_recibo_{i}", "").strip(),
                         }
                     )
 
@@ -177,6 +178,8 @@ def entregas_captura_view(request, carga_id, factura_id):
                 motivo_por_linea=motivo_por_linea,
                 observaciones=observaciones,
                 pagos=pagos,
+                documento_devolucion=request.POST.get("documento_devolucion", "").strip(),
+                documento_cliente=request.POST.get("documento_cliente", "").strip(),
             )
         except RegistroEntregaError as exc:
             messages.error(request, str(exc))

@@ -77,6 +77,22 @@
     </div>
   </div>
 
+  <div class="seccion oculto" id="seccionDevolucion">
+    <h3>Devolución</h3>
+    <div class="campo-form">
+      <label>N.º de documento de devolución</label>
+      <input type="text" name="documento_devolucion" maxlength="30" placeholder="Opcional">
+    </div>
+  </div>
+
+  <div class="seccion" id="seccionDocumento">
+    <h3>Factura dejada al cliente</h3>
+    <div class="seg">
+      <label><input type="radio" name="documento_cliente" value="ORIGINAL" checked><span>Original</span></label>
+      <label><input type="radio" name="documento_cliente" value="COPIA"><span>Copia</span></label>
+    </div>
+  </div>
+
   <div class="seccion seccion-cobro" id="seccionCobro" data-base="{{ base_cobro }}" data-contado="{% if es_contado %}1{% else %}0{% endif %}" data-max="{{ max_pagos }}">
     <h3>{% if es_contado %}Cobro (factura de contado){% else %}Abono (factura de crédito){% endif %}</h3>
     <div class="campo-form">
@@ -111,6 +127,7 @@
           <input type="number" class="monto-in" step="0.01" min="0" placeholder="0.00">
         </div>
         <input type="text" class="ref oculto" maxlength="50" placeholder="Referencia (n.º transferencia, cheque, voucher)">
+        <input type="text" class="recibo" maxlength="30" placeholder="N.º de recibo (opcional)">
       </div>
     </template>
   </div>
@@ -222,6 +239,7 @@
       f.querySelector(".forma").name = "pago_forma_" + i;
       f.querySelector(".monto-in").name = "pago_monto_" + i;
       f.querySelector(".ref").name = "pago_ref_" + i;
+      f.querySelector(".recibo").name = "pago_recibo_" + i;
       f.querySelector(".btn-quitar").classList.toggle("oculto", filas.length === 1);
     });
     btnAgregar.disabled = filas.length >= MAX;
@@ -259,7 +277,16 @@
         if (usadas.indexOf(sel.options[k].value) < 0) { sel.value = sel.options[k].value; break; }
       }
     }
-    function refVisible() { ref.classList.toggle("oculto", sel.value === "EFECTIVO"); }
+    var recibo = fila.querySelector(".recibo");
+    // Cambio #15: efectivo -> recibo; nota de crédito -> su número; resto -> referencia.
+    function refVisible() {
+      var esEfectivo = sel.value === "EFECTIVO";
+      ref.classList.toggle("oculto", esEfectivo);
+      recibo.classList.toggle("oculto", !esEfectivo);
+      ref.placeholder = sel.value === "NOTA_CREDITO"
+        ? "N.º de nota de crédito (opcional)"
+        : "Referencia (n.º transferencia, cheque, voucher)";
+    }
     sel.addEventListener("change", refVisible);
     refVisible();
     inp.addEventListener("input", function () { montoEditadoAMano = true; recalcularCobro(); });
@@ -272,7 +299,26 @@
 
   // Mientras haya un solo pago y no se haya tocado a mano, su monto sigue
   // al valor de lo entregado (solo contado; en crédito el abono lo escribe el repartidor).
+  // Cambio #15: el documento de devolución solo se pide si algo queda
+  // devuelto, y original/copia solo si algo se entrega.
+  var seccionDevolucion = document.getElementById("seccionDevolucion");
+  var seccionDocumento = document.getElementById("seccionDocumento");
+  function actualizarSeccionesDocumento() {
+    var hayDevolucion = false, hayEntrega = false;
+    bloques.forEach(function (bloque) {
+      var pendiente = parseFloat(bloque.dataset.pendiente || "0");
+      var v = parseFloat(bloque.querySelector(".input-entregada").value);
+      if (isNaN(v) || v < 0) v = 0;
+      if (v > pendiente) v = pendiente;
+      if (v > 0) hayEntrega = true;
+      if (v < pendiente) hayDevolucion = true;
+    });
+    seccionDevolucion.classList.toggle("oculto", !hayDevolucion);
+    seccionDocumento.classList.toggle("oculto", !hayEntrega);
+  }
+
   function alCambiarCantidades() {
+    actualizarSeccionesDocumento();
     var filas = pagosDiv.querySelectorAll(".pago-fila");
     if (esContado && !montoEditadoAMano && filas.length === 1) {
       filas[0].querySelector(".monto-in").value = montoACobrar().toFixed(2);
@@ -286,6 +332,7 @@
   if (btnNada) btnNada.addEventListener("click", alCambiarCantidades);
   btnAgregar.addEventListener("click", function () { agregarPago(null); });
   agregarPago(esContado ? montoACobrar() : null);
+  actualizarSeccionesDocumento();
 
   var chkCobro = document.getElementById("chkCobro");
   var bloqueCobro = document.getElementById("bloqueCobro");

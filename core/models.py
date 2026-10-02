@@ -326,6 +326,7 @@ class MotivoDevolucion(models.Model):
 class Entrega(models.Model):
     TIPO_CHOICES = [("PARCIAL", "Parcial"), ("TOTAL", "Total")]
     ESTADO_CHOICES = [("CONFIRMADA", "Confirmada"), ("ANULADA", "Anulada")]
+    DOCUMENTO_CLIENTE_CHOICES = [("ORIGINAL", "Original"), ("COPIA", "Copia")]
 
     factura = models.ForeignKey(Factura, on_delete=models.PROTECT, related_name="entregas")
     fecha_entrega = models.DateTimeField(auto_now_add=True)
@@ -344,6 +345,25 @@ class Entrega(models.Model):
         ),
     )
     observaciones = models.TextField(blank=True)
+    documento_devolucion = models.CharField(
+        max_length=30,
+        blank=True,
+        verbose_name="N.º de documento de devolución",
+        help_text=(
+            "Número del documento de devolución que llena el repartidor "
+            "cuando en esta visita se devolvió algo (Cambio #15)."
+        ),
+    )
+    documento_cliente = models.CharField(
+        max_length=10,
+        choices=DOCUMENTO_CLIENTE_CHOICES,
+        blank=True,
+        verbose_name="Factura dejada al cliente",
+        help_text=(
+            "Si al cliente se le dejó la factura original o una copia "
+            "(Cambio #15). Vacío cuando en la visita no se entregó nada."
+        ),
+    )
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default="CONFIRMADA")
 
     class Meta:
@@ -421,13 +441,30 @@ class Pago(models.Model):
         ("TRANSFERENCIA", "Transferencia"),
         ("CHEQUE", "Cheque"),
         ("TARJETA", "Tarjeta"),
+        ("NOTA_CREDITO", "Nota de crédito"),
     ]
     cartera = models.ForeignKey(CarteraCobro, on_delete=models.PROTECT, related_name="pagos")
     plan_pago = models.ForeignKey(PlanPago, null=True, blank=True, on_delete=models.SET_NULL)
     fecha_pago = models.DateTimeField(auto_now_add=True)
     monto = models.DecimalField(max_digits=14, decimal_places=2)
     forma_pago = models.CharField(max_length=20, choices=FORMA_CHOICES)
-    referencia = models.CharField(max_length=50, blank=True)
+    referencia = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text=(
+            "Número de transferencia, cheque o voucher; si la forma de pago es "
+            "nota de crédito, aquí va el número de la nota de crédito."
+        ),
+    )
+    numero_recibo = models.CharField(
+        max_length=30,
+        blank=True,
+        verbose_name="N.º de recibo",
+        help_text=(
+            "Número del recibo con el que el repartidor recibe el efectivo "
+            "del cliente (Cambio #15). Solo aplica a pagos en efectivo."
+        ),
+    )
     cobrador = models.ForeignKey(Vendedor, null=True, blank=True, on_delete=models.SET_NULL)
     observaciones = models.TextField(blank=True)
 

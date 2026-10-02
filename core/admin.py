@@ -352,9 +352,17 @@ class EntregaAdmin(admin.ModelAdmin):
         "tipo_entrega",
         "repartidor",
         "motivo_devolucion_general",
+        "documento_cliente",
+        "documento_devolucion",
         "estado",
     )
-    list_filter = ("tipo_entrega", "estado", "motivo_devolucion_general__area_responsable")
+    list_filter = (
+        "tipo_entrega",
+        "estado",
+        "documento_cliente",
+        "motivo_devolucion_general__area_responsable",
+    )
+    search_fields = ("factura__numero_factura", "documento_devolucion")
     inlines = [EntregaDetalleInline]
 
 
@@ -373,8 +381,18 @@ class CarteraCobroAdmin(admin.ModelAdmin):
 
 @admin.register(models.Pago)
 class PagoAdmin(admin.ModelAdmin):
-    list_display = ("id", "cartera", "fecha_pago", "monto", "forma_pago", "cobrador")
+    list_display = (
+        "id",
+        "cartera",
+        "fecha_pago",
+        "monto",
+        "forma_pago",
+        "numero_recibo",
+        "referencia",
+        "cobrador",
+    )
     list_filter = ("forma_pago",)
+    search_fields = ("cartera__factura__numero_factura", "numero_recibo", "referencia")
 
 
 class ConsignacionDetalleInline(admin.TabularInline):

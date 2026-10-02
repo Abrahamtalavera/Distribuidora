@@ -45,6 +45,8 @@ def registrar_entrega(
     motivo_por_linea=None,
     observaciones="",
     pagos=None,
+    documento_devolucion="",
+    documento_cliente="",
 ):
     """
     Registra una entrega para `factura`.
@@ -63,6 +65,14 @@ def registrar_entrega(
       deuda y saldo en cada entrega, aunque no traiga pagos, para que las
       devoluciones bajen lo que el cliente debe (Cambio #13).
 
+    - documento_devolucion (Cambio #15): número de documento de devolución
+      que escribe el repartidor. Solo se guarda si en esta visita de verdad
+      quedó algo devuelto.
+    - documento_cliente (Cambio #15): "ORIGINAL" o "COPIA", lo que se le dejó
+      al cliente. Solo se guarda si en esta visita se entregó algo; si llega
+      vacío o con un valor desconocido se toma "ORIGINAL" (es el valor que
+      viene marcado en pantalla).
+
     Devuelve la Entrega creada.
     """
     motivo_por_linea = motivo_por_linea or {}
@@ -78,6 +88,9 @@ def registrar_entrega(
         motivo_devolucion_general_id=motivo_general_id or None,
         observaciones=observaciones,
     )
+
+    total_entregado_visita = Decimal("0")
+    total_devuelto_visita = Decimal("0")
 
     for factura_detalle_id, cantidad_cruda in cantidades_entregadas.items():
         linea = lineas_por_id.get(int(factura_detalle_id))
@@ -96,6 +109,8 @@ def registrar_entrega(
         if entregada > pendiente_antes:
             entregada = pendiente_antes
         devuelta = pendiente_antes - entregada
+        total_entregado_visita += entregada
+        total_devuelto_visita += devuelta
 
         motivo_id = motivo_por_linea.get(factura_detalle_id) or motivo_por_linea.get(
             str(factura_detalle_id)
@@ -131,7 +146,14 @@ def registrar_entrega(
     factura.save(update_fields=["estado_entrega"])
 
     entrega.tipo_entrega = tipo_entrega
-    entrega.save(update_fields=["tipo_entrega"])
+    if total_devuelto_visita > 0:
+        entrega.documento_devolucion = (documento_devolucion or "").strip()[:30]
+    if total_entregado_visita > 0:
+        validos = {codigo for codigo, _ in Entrega.DOCUMENTO_CLIENTE_CHOICES}
+        entrega.documento_cliente = (
+            documento_cliente if documento_cliente in validos else "ORIGINAL"
+        )
+    entrega.save(update_fields=["tipo_entrega", "documento_devolucion", "documento_cliente"])
 
     pagos_validos = _normalizar_pagos(pagos)
     cartera_existente = CarteraCobro.objects.filter(factura=factura).first()
@@ -149,6 +171,7 @@ def registrar_entrega(
                 monto=pago["monto"],
                 forma_pago=pago["forma_pago"],
                 referencia=pago["referencia"],
+                numero_recibo=pago["numero_recibo"],
                 cobrador=repartidor,
                 observaciones=pago.get("observaciones", ""),
             )
@@ -217,11 +240,17 @@ def _normalizar_pagos(pagos):
         forma = pago.get("forma_pago") or "EFECTIVO"
         if forma not in formas_validas:
             forma = "EFECTIVO"
+        # Cambio #15: el efectivo lleva número de recibo; las demás formas
+        # llevan referencia (en nota de crédito, el número de la nota).
         referencia = (pago.get("referencia") or "").strip()[:50]
+        numero_recibo = (pago.get("numero_recibo") or "").strip()[:30]
         if forma == "EFECTIVO":
             referencia = ""
+        else:
+            numero_recibo = ""
         resultado.append(
             {"monto": monto, "forma_pago": forma, "referencia": referencia,
+             "numero_recibo": numero_recibo,
              "observaciones": pago.get("observaciones", "")}
         )
     return resultado

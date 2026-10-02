@@ -253,7 +253,14 @@
   .pago-fila .campos { display: flex; gap: 8px; }
   .pago-fila select, .pago-fila input { width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; font-family: inherit; }
   .pago-fila .monto-in { font-size: 16px; font-weight: 700; color: var(--primary-dark); }
-  .pago-fila .ref { margin-top: 8px; }
+  .pago-fila .ref, .pago-fila .recibo { margin-top: 8px; }
+  /* Cambio #15: selector Original / Copia */
+  .seg { display: flex; border: 1px solid var(--primary); border-radius: 8px; overflow: hidden; }
+  .seg label { flex: 1; cursor: pointer; margin: 0; }
+  .seg label + label { border-left: 1px solid var(--primary); }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; width: auto; }
+  .seg span { display: block; text-align: center; padding: 11px 8px; font-size: 14px; font-weight: 600; color: var(--primary); background: #fff; }
+  .seg input:checked + span { background: var(--primary); color: #fff; }
   .btn-agregar { width: 100%; padding: 10px; border: 1px dashed var(--primary); background: #fff; color: var(--primary); border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; }
   .btn-agregar:disabled { opacity: .45; cursor: default; }
   .resumen-pagos { margin-top: 10px; background: #fff; border-radius: 8px; padding: 10px 12px; font-size: 14px; }
