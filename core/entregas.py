@@ -47,6 +47,7 @@ def registrar_entrega(
     pagos=None,
     documento_devolucion="",
     documento_cliente="",
+    carga=None,
 ):
     """
     Registra una entrega para `factura`.
@@ -73,6 +74,9 @@ def registrar_entrega(
       vacío o con un valor desconocido se toma "ORIGINAL" (es el valor que
       viene marcado en pantalla).
 
+    - carga (Cambio #14): la carga desde la que se registra la visita. La
+      Entrega y sus pagos quedan enlazados a ella para el cierre de la carga.
+
     Devuelve la Entrega creada.
     """
     motivo_por_linea = motivo_por_linea or {}
@@ -83,6 +87,7 @@ def registrar_entrega(
 
     entrega = Entrega.objects.create(
         factura=factura,
+        carga=carga,
         tipo_entrega="PARCIAL",  # se corrige abajo una vez sabemos cómo quedó
         repartidor=repartidor,
         motivo_devolucion_general_id=motivo_general_id or None,
@@ -168,6 +173,7 @@ def registrar_entrega(
         for pago in pagos_validos:
             Pago.objects.create(
                 cartera=cartera,
+                entrega=entrega,
                 monto=pago["monto"],
                 forma_pago=pago["forma_pago"],
                 referencia=pago["referencia"],

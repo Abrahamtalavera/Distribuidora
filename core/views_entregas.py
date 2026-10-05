@@ -21,6 +21,7 @@ from core.entregas import (
     valor_entregado,
     valor_unitario,
 )
+from core.cierre import anotar_resultado, resumen_cierre
 from core.models import Carga, CarteraCobro, Factura, MotivoDevolucion, Pago
 
 SESSION_KEY_CARGA = "entrega_carga_id"
@@ -95,14 +96,24 @@ def entregas_lista_view(request, carga_id):
     facturas = list(
         carga.facturas.filter(estado_factura="ACTIVA")
         .select_related("cliente", "modalidad_pago")
+        .prefetch_related("lineas")
         .order_by("cliente__nombre", "numero_factura")
     )
     for factura in facturas:
         factura.total_fmt = _moneda(factura.total)
+        # Cambio #14: etiqueta con lo que pasó de verdad (Completa, Con
+        # devolución, No entregada, Sin visitar).
+        anotar_resultado(factura)
 
+    es_staff = request.user.is_authenticated and request.user.is_staff
     total_facturas = len(facturas)
-    entregadas = sum(1 for f in facturas if f.estado_entrega == "COMPLETA")
+    entregadas = sum(1 for f in facturas if f.resultado != "SIN_VISITAR")
     porcentaje = round((entregadas / total_facturas) * 100) if total_facturas else 0
+    # El repartidor no puede abrir facturas con la ruta terminada o la carga
+    # cerrada; oficina sí puede corregir mientras no esté cerrada.
+    puede_capturar = not carga.bloqueada_para_repartidor or (
+        es_staff and not carga.esta_cerrada
+    )
 
     return render(
         request,
@@ -113,7 +124,9 @@ def entregas_lista_view(request, carga_id):
             "total_facturas": total_facturas,
             "entregadas": entregadas,
             "porcentaje": porcentaje,
-            "es_staff": request.user.is_authenticated and request.user.is_staff,
+            "es_staff": es_staff,
+            "puede_capturar": puede_capturar,
+            "r": resumen_cierre(carga) if carga.bloqueada_para_repartidor else None,
         },
     )
 
@@ -131,6 +144,21 @@ def entregas_captura_view(request, carga_id, factura_id):
     )
     es_contado = factura.modalidad_pago.codigo == "CONTADO"
     motivos = MotivoDevolucion.objects.filter(activo=True).order_by("nombre")
+
+    # Cambio #14: con la ruta terminada el repartidor ya no registra nada;
+    # con la carga cerrada nadie (oficina debe reabrirla primero).
+    es_staff = request.user.is_authenticated and request.user.is_staff
+    if carga.esta_cerrada:
+        messages.error(
+            request, "Esta carga ya está cerrada. Oficina debe reabrirla para corregir algo."
+        )
+        return redirect("entregas_lista", carga_id=carga.id)
+    if carga.bloqueada_para_repartidor and not es_staff:
+        messages.error(
+            request,
+            "Ya marcaste la ruta como terminada. Si falta corregir algo, pídelo en oficina.",
+        )
+        return redirect("entregas_lista", carga_id=carga.id)
 
     if request.method == "POST":
         lineas_pendientes = list(factura.lineas.all())
@@ -180,6 +208,7 @@ def entregas_captura_view(request, carga_id, factura_id):
                 pagos=pagos,
                 documento_devolucion=request.POST.get("documento_devolucion", "").strip(),
                 documento_cliente=request.POST.get("documento_cliente", "").strip(),
+                carga=carga,
             )
         except RegistroEntregaError as exc:
             messages.error(request, str(exc))

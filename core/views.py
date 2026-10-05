@@ -7,6 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from core.forms import ImportarFacturasForm
 from core.importador import ImportacionError, importar_excel
+from core.cierre import resumen_cierre
 from core.models import Carga
 
 
@@ -54,6 +55,14 @@ def imprimir_carga_view(request, pk):
     totales con desglose por modalidad de pago (contado / crédito / etc.).
     """
     carga = get_object_or_404(Carga, pk=pk)
+    if carga.esta_cerrada:
+        # Cambio #14: una carga cerrada imprime el reporte de cierre en vez
+        # del reporte de despacho.
+        return render(
+            request,
+            "core/imprimir_cierre.html",
+            {"carga": carga, "r": resumen_cierre(carga)},
+        )
     facturas = list(
         carga.facturas.select_related("cliente", "modalidad_pago").order_by("numero_factura")
     )

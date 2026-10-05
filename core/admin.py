@@ -8,6 +8,7 @@ from django.shortcuts import redirect, render
 from core import models
 from core.forms import AgruparEnCargaForm
 from core.views import importar_facturas_view, imprimir_carga_view
+from core.views_cierre import cierre_carga_view
 
 
 class FacturaDetalleInline(admin.TabularInline):
@@ -295,9 +296,33 @@ class CargaAdmin(admin.ModelAdmin):
         "codigo_acceso",
     )
     list_filter = ("estado", "fecha_planeada", "ruta", "conductor")
-    readonly_fields = ("codigo_acceso",)
+    readonly_fields = (
+        "codigo_acceso",
+        "ruta_terminada_en",
+        "observaciones_repartidor",
+        "cerrada_en",
+        "cerrada_por",
+        "observaciones_cierre",
+    )
     inlines = [FacturaEnCargaInline]
     change_form_template = "admin/core/carga/change_form.html"
+
+    # Cambio #14: "Ruta terminada" y "Cerrada" solo se alcanzan por el flujo
+    # de cierre (botón "Cerrar carga"), no eligiéndolas a mano en esta ficha.
+    def get_readonly_fields(self, request, obj=None):
+        campos = list(super().get_readonly_fields(request, obj))
+        if obj is not None and obj.bloqueada_para_repartidor:
+            campos.append("estado")
+        return campos
+
+    def formfield_for_choice_field(self, db_field, request, **kwargs):
+        if db_field.name == "estado":
+            kwargs["choices"] = [
+                (codigo, nombre)
+                for codigo, nombre in models.Carga.ESTADO_CHOICES
+                if codigo in ("PLANEADA", "EN_RUTA")
+            ]
+        return super().formfield_for_choice_field(db_field, request, **kwargs)
 
     @admin.display(description="Facturas")
     def total_facturas(self, obj):
@@ -310,6 +335,11 @@ class CargaAdmin(admin.ModelAdmin):
                 "<int:pk>/imprimir/",
                 self.admin_site.admin_view(imprimir_carga_view),
                 name="core_carga_imprimir",
+            ),
+            path(
+                "<int:pk>/cierre/",
+                self.admin_site.admin_view(cierre_carga_view),
+                name="core_carga_cierre",
             ),
         ]
         return custom + urls

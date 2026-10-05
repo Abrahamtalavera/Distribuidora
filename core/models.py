@@ -1,5 +1,6 @@
 import random
 
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
@@ -86,8 +87,12 @@ class Carga(models.Model):
     ESTADO_CHOICES = [
         ("PLANEADA", "Planeada"),
         ("EN_RUTA", "En ruta"),
+        ("RUTA_TERMINADA", "Ruta terminada"),
         ("CERRADA", "Cerrada"),
     ]
+    # Cambio #14: mientras la carga está en uno de estos estados el
+    # repartidor ya no puede registrar entregas ni cobros.
+    ESTADOS_BLOQUEADOS_REPARTIDOR = ("RUTA_TERMINADA", "CERRADA")
 
     fecha_planeada = models.DateField(default=timezone.localdate)
     ruta = models.ForeignKey(
@@ -120,6 +125,44 @@ class Carga(models.Model):
     )
     creado_en = models.DateTimeField(auto_now_add=True)
 
+    # --- Cambio #14: cierre de la carga en dos pasos -----------------------
+    ruta_terminada_en = models.DateTimeField(
+        null=True, blank=True, editable=False, verbose_name="Ruta terminada el"
+    )
+    observaciones_repartidor = models.TextField(
+        blank=True,
+        verbose_name="Observaciones del repartidor",
+        help_text="Lo que escribe el repartidor al marcar 'Terminé mi ruta'.",
+    )
+    cerrada_en = models.DateTimeField(
+        null=True, blank=True, editable=False, verbose_name="Cerrada el"
+    )
+    cerrada_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        editable=False,
+        on_delete=models.SET_NULL,
+        related_name="cargas_cerradas",
+        verbose_name="Cerrada por",
+    )
+    observaciones_cierre = models.TextField(
+        blank=True,
+        verbose_name="Observaciones del cierre (oficina)",
+        help_text="Obligatoria cuando el dinero recibido no cuadra con el sistema.",
+    )
+    facturas_liberadas = models.ManyToManyField(
+        "Factura",
+        blank=True,
+        editable=False,
+        related_name="cargas_que_la_liberaron",
+        help_text=(
+            "Facturas que seguían sin visitar al cerrar la carga y que por "
+            "eso salieron de ella (quedaron 'Sin carga asignada'). Se guardan "
+            "aquí para que el reporte de cierre las siga mostrando."
+        ),
+    )
+
     class Meta:
         verbose_name = "Carga"
         verbose_name_plural = "Cargas"
@@ -145,6 +188,45 @@ class Carga(models.Model):
         if not self.codigo_acceso:
             self.codigo_acceso = self.generar_codigo_acceso_unico()
         super().save(*args, **kwargs)
+
+    @property
+    def bloqueada_para_repartidor(self):
+        return self.estado in self.ESTADOS_BLOQUEADOS_REPARTIDOR
+
+    @property
+    def esta_cerrada(self):
+        return self.estado == "CERRADA"
+
+    @property
+    def codigo_reporte(self):
+        return f"CARGA-{self.id:04d}"
+
+
+class CargaCuadre(models.Model):
+    """
+    Cambio #14: cuadre de dinero del cierre de una carga, una fila por forma
+    de pago en dinero (efectivo, cheque, transferencia, tarjeta). Guarda lo
+    que decía el sistema en el momento del cierre y lo que oficina recibió,
+    para que el reporte de cierre no cambie si después se registran más
+    pagos de esas facturas.
+    """
+
+    carga = models.ForeignKey(Carga, on_delete=models.CASCADE, related_name="cuadre")
+    forma_pago = models.CharField(max_length=20)
+    segun_sistema = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    recibido = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+
+    class Meta:
+        verbose_name = "Cuadre de dinero"
+        verbose_name_plural = "Cuadre de dinero"
+        unique_together = ("carga", "forma_pago")
+
+    def __str__(self):
+        return f"{self.carga_id} / {self.forma_pago}"
+
+    @property
+    def diferencia(self):
+        return self.recibido - self.segun_sistema
 
 
 class Cliente(models.Model):
@@ -329,6 +411,18 @@ class Entrega(models.Model):
     DOCUMENTO_CLIENTE_CHOICES = [("ORIGINAL", "Original"), ("COPIA", "Copia")]
 
     factura = models.ForeignKey(Factura, on_delete=models.PROTECT, related_name="entregas")
+    carga = models.ForeignKey(
+        Carga,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="entregas",
+        help_text=(
+            "Carga en la que se hizo esta visita (Cambio #14). Se guarda "
+            "aparte de la carga de la factura para que el cierre de una carga "
+            "no cambie si la factura se mueve después a otra carga."
+        ),
+    )
     fecha_entrega = models.DateTimeField(auto_now_add=True)
     tipo_entrega = models.CharField(max_length=10, choices=TIPO_CHOICES)
     repartidor = models.ForeignKey(Vendedor, null=True, blank=True, on_delete=models.SET_NULL)
@@ -385,6 +479,11 @@ class EntregaDetalle(models.Model):
         on_delete=models.SET_NULL,
         related_name="lineas_entrega",
         help_text="Motivo de devolución específico de este producto, si aplica.",
+    )
+    recibido_bodega = models.BooleanField(
+        default=False,
+        verbose_name="Recibido en bodega",
+        help_text="Se marca en el cierre de la carga cuando bodega recibe lo devuelto (Cambio #14).",
     )
 
     class Meta:
@@ -445,6 +544,17 @@ class Pago(models.Model):
     ]
     cartera = models.ForeignKey(CarteraCobro, on_delete=models.PROTECT, related_name="pagos")
     plan_pago = models.ForeignKey(PlanPago, null=True, blank=True, on_delete=models.SET_NULL)
+    entrega = models.ForeignKey(
+        Entrega,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="pagos",
+        help_text=(
+            "Visita de entrega en la que el repartidor recibió este pago "
+            "(Cambio #14). Vacío si el pago se registró fuera de una entrega."
+        ),
+    )
     fecha_pago = models.DateTimeField(auto_now_add=True)
     monto = models.DecimalField(max_digits=14, decimal_places=2)
     forma_pago = models.CharField(max_length=20, choices=FORMA_CHOICES)

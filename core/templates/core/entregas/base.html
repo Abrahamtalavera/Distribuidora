@@ -124,6 +124,7 @@
   .badge-pendiente { background: var(--pend-bg); color: var(--pend); }
   .badge-parcial { background: var(--warn-bg); color: var(--warn); }
   .badge-completa { background: var(--ok-bg); color: var(--ok); }
+  .badge-noentregada { background: #fdecea; color: var(--danger); }
   .badge-contado { background: var(--accent-light); color: var(--primary-dark); }
   .badge-credito { background: #f3e5f5; color: #6a1b9a; }
   .fila-bottom {
@@ -269,6 +270,22 @@
   .estado-cuadre.ok { background: var(--ok-bg); color: var(--ok); }
   .estado-cuadre.falta { background: var(--warn-bg); color: var(--warn); }
   .estado-cuadre.sobra { background: #fdecea; color: var(--danger); }
+
+  /* Cambio #14: cierre de carga */
+  .aviso { padding: 9px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; }
+  .aviso.warn { background: var(--warn-bg); color: #6b4f00; }
+  .aviso.ok { background: var(--ok-bg); color: var(--ok); }
+  .aviso.info { background: var(--accent-light); color: var(--primary-dark); }
+  .aviso.error { background: #fdecea; color: var(--danger); }
+  .kv { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; padding: 4px 0; }
+  .kv .l { color: var(--muted); }
+  .kv.tot { border-top: 1px solid #eee; margin-top: 4px; padding-top: 8px; font-weight: 700; }
+  .factura-card.inactiva { cursor: default; }
+  .btn-secundario {
+    display: block; text-align: center; text-decoration: none;
+    background: #fff; color: var(--primary); border: 1px solid var(--primary);
+    padding: 11px; border-radius: 8px; font-size: 14px; font-weight: 600; margin-bottom: 12px;
+  }
 
   .barra-inferior {
     position: fixed;

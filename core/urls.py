@@ -5,7 +5,7 @@
 
 from django.urls import path
 
-from core import views_entregas
+from core import views_cierre, views_entregas
 
 urlpatterns = [
     path("entregas/acceso/", views_entregas.entregas_acceso_view, name="entregas_acceso"),
@@ -18,6 +18,11 @@ urlpatterns = [
         "entregas/carga/<int:carga_id>/factura/<int:factura_id>/",
         views_entregas.entregas_captura_view,
         name="entregas_captura",
+    ),
+    path(
+        "entregas/carga/<int:carga_id>/terminar/",
+        views_cierre.entregas_terminar_view,
+        name="entregas_terminar",
     ),
     path(
         "entregas/carga/<int:carga_id>/salir/",

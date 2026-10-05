@@ -1,4 +1,5 @@
 {% extends "core/entregas/base.html" %}
+{% load formato %}
 
 {% block titulo %}Carga #{{ carga.id }}{% endblock %}
 
@@ -13,15 +14,45 @@
   <div class="subtitulo">
     {% if carga.ruta %}{{ carga.ruta.nombre }}{% else %}Sin ruta{% endif %}
     · {{ carga.fecha_planeada|date:"d/m/Y" }}
-    · {{ entregadas }} de {{ total_facturas }} facturas entregadas
+    · {{ entregadas }} de {{ total_facturas }} facturas visitadas
   </div>
   <div class="progreso-bar"><div class="progreso-fill" style="width:{{ porcentaje }}%"></div></div>
 </header>
 {% endblock %}
 
 {% block content %}
+{% if carga.bloqueada_para_repartidor %}
+  {% if carga.esta_cerrada %}
+    <div class="aviso ok"><b>Carga cerrada</b>{% if carga.cerrada_en %} el {{ carga.cerrada_en|date:"d/m/Y H:i" }}{% endif %}. Ya no se puede modificar.</div>
+  {% else %}
+    <div class="aviso ok"><b>Ruta terminada</b>{% if carga.ruta_terminada_en %} el {{ carga.ruta_terminada_en|date:"d/m/Y H:i" }}{% endif %}. Entrega el dinero y las devoluciones en oficina para que cierren la carga.</div>
+    {% if not es_staff %}
+      <div class="aviso info">Ya no puedes registrar entregas ni cobros en esta carga. Si falta corregir algo, pídelo en oficina.</div>
+    {% endif %}
+  {% endif %}
+  {% if es_staff %}
+    <a class="btn-secundario" href="{% url 'admin:core_carga_cierre' carga.id %}">{% if carga.esta_cerrada %}Ver cierre de la carga{% else %}Ir al cierre de la carga{% endif %}</a>
+  {% endif %}
+  <div class="seccion">
+    <h3>Resumen</h3>
+    <div class="kv"><span class="l">Facturas visitadas</span><span>{{ r.visitadas }} de {{ r.total_facturas }}</span></div>
+    <div class="kv"><span class="l">Dinero a entregar</span><span>C$ {{ r.total_sistema|moneda }}</span></div>
+    {% if r.nota_credito_total %}
+      <div class="kv"><span class="l">Notas de crédito</span><span>C$ {{ r.nota_credito_total|moneda }}</span></div>
+    {% endif %}
+    <div class="kv"><span class="l">Valor devuelto</span><span>C$ {{ r.valor_devuelto|moneda }}</span></div>
+    {% if r.km_recorrido is not None %}
+      <div class="kv"><span class="l">Km recorridos</span><span>{{ r.km_recorrido|km }} km</span></div>
+    {% endif %}
+  </div>
+{% endif %}
+
 {% for factura in facturas %}
+  {% if puede_capturar %}
   <a class="factura-card" href="{% url 'entregas_captura' carga.id factura.id %}" style="display:block; text-decoration:none; color:inherit;">
+  {% else %}
+  <div class="factura-card inactiva">
+  {% endif %}
     <div class="fila-top">
       <div>
         <div class="numero">{{ factura.numero_factura }}</div>
@@ -36,16 +67,18 @@
       {% else %}
         <span class="badge badge-credito">{{ factura.modalidad_pago.nombre }}</span>
       {% endif %}
-      {% if factura.estado_entrega == "PENDIENTE" %}
-        <span class="badge badge-pendiente">Pendiente</span>
-      {% elif factura.estado_entrega == "PARCIAL" %}
-        <span class="badge badge-parcial">Parcial</span>
-      {% else %}
-        <span class="badge badge-completa">Completa</span>
-      {% endif %}
+      <span class="badge badge-{{ factura.resultado_css }}">{{ factura.resultado_nombre }}</span>
     </div>
-  </a>
+  {% if puede_capturar %}</a>{% else %}</div>{% endif %}
 {% empty %}
   <p>No hay facturas activas asignadas a esta carga.</p>
 {% endfor %}
+{% endblock %}
+
+{% block barra_inferior %}
+{% if not carga.bloqueada_para_repartidor %}
+<div class="barra-inferior">
+  <a class="btn-guardar" style="display:block; text-align:center; text-decoration:none;" href="{% url 'entregas_terminar' carga.id %}">Terminé mi ruta</a>
+</div>
+{% endif %}
 {% endblock %}

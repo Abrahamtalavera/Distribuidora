@@ -1,0 +1,176 @@
+{% load static formato %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>{{ carga.codigo_reporte }} — Reporte de cierre</title>
+<style>
+  @page { size: A4; margin: 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #1a1a1a; background: #f2f2f2; margin: 0; padding: 24px; }
+  .barra-acciones { max-width: 794px; margin: 0 auto 14px auto; display: flex; justify-content: flex-end; gap: 10px; }
+  .barra-acciones a, .barra-acciones button {
+    font-family: inherit; font-size: 13px; padding: 8px 16px; border-radius: 4px;
+    border: 1px solid #1a1a1a; background: #1a1a1a; color: #fff; cursor: pointer; text-decoration: none;
+  }
+  .barra-acciones a.secundario { background: #fff; color: #1a1a1a; }
+  .page { width: 794px; max-width: 100%; background: #fff; margin: 0 auto; padding: 32px 40px; border: 1px solid #ddd; }
+  .enc { display: flex; align-items: center; gap: 16px; border-bottom: 2px solid #1a1a1a; padding-bottom: 12px; margin-bottom: 16px; }
+  .enc img { height: 60px; width: auto; }
+  .enc h1 { margin: 0; font-size: 19px; }
+  .enc .id { font-size: 13px; color: #555; margin-top: 3px; }
+  .datos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 18px; font-size: 12.5px; margin-bottom: 16px; }
+  .datos b { display: block; font-size: 10.5px; text-transform: uppercase; color: #666; font-weight: 600; }
+  h2 { font-size: 13px; text-transform: uppercase; border-bottom: 1px solid #1a1a1a; padding-bottom: 3px; margin: 18px 0 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; font-size: 10.5px; text-transform: uppercase; color: #555; border-bottom: 1px solid #bbb; padding: 4px 6px; }
+  td { padding: 4px 6px; border-bottom: 1px solid #eee; vertical-align: top; }
+  td.r, th.r { text-align: right; white-space: nowrap; }
+  tr.tot td { font-weight: 700; border-top: 2px solid #bbb; border-bottom: none; }
+  tr.con-pagos td { border-bottom: none; padding-bottom: 1px; }
+  tr.pagos td { padding-top: 0; padding-bottom: 6px; font-size: 11px; color: #333; }
+  tr.pagos .pg-t { color: #666; }
+  tr.pagos .pg { display: inline-block; margin-right: 14px; white-space: nowrap; }
+  .nota { font-size: 12px; margin-top: 6px; }
+  .firmas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; margin-top: 54px; font-size: 12px; text-align: center; }
+  .firmas div { border-top: 1px solid #1a1a1a; padding-top: 5px; }
+  tr, .firmas { page-break-inside: avoid; }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .barra-acciones { display: none; }
+    .page { border: none; margin: 0; width: auto; padding: 0; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="barra-acciones">
+    <a href="{% url 'admin:core_carga_cierre' carga.pk %}" class="secundario">&larr; Volver al cierre</a>
+    <button onclick="window.print()">Imprimir</button>
+  </div>
+
+  <div class="page">
+    <div class="enc">
+      <img src="{% static 'core/logo_sol_maya.png' %}" alt="Sol Maya">
+      <div>
+        <h1>Reporte de cierre de Carga</h1>
+        <div class="id">{{ carga.codigo_reporte }} · Cerrada el {{ carga.cerrada_en|date:"d/m/Y H:i" }}{% if carga.cerrada_por %} por {{ carga.cerrada_por.get_username }}{% endif %}</div>
+      </div>
+    </div>
+
+    <div class="datos">
+      <div><b>Fecha</b>{{ carga.fecha_planeada|date:"d/m/Y" }}</div>
+      <div><b>Ruta / zona</b>{{ carga.ruta|default:"—" }}</div>
+      <div><b>Conductor</b>{{ carga.conductor|default:"—" }}</div>
+      <div><b>Vehículo</b>{{ carga.vehiculo|default:"—" }}</div>
+      <div><b>Km inicial / final</b>{% if carga.km_inicial is not None %}{{ carga.km_inicial|km }}{% else %}—{% endif %} / {% if carga.km_final is not None %}{{ carga.km_final|km }}{% else %}—{% endif %}</div>
+      <div><b>Recorrido</b>{% if r.km_recorrido is not None %}{{ r.km_recorrido|km }} km{% else %}—{% endif %}</div>
+    </div>
+
+    <h2>Facturas y documentos de pago</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Factura</th><th>Cliente</th><th>Modalidad</th><th>Resultado</th><th>Dejó</th>
+          <th class="r">Facturado</th><th class="r">Entregado</th><th class="r">Devuelto</th><th class="r">Cobrado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in r.filas %}
+        <tr{% if f.pagos %} class="con-pagos"{% endif %}>
+          <td><b>{{ f.factura.numero_factura }}</b></td>
+          <td>{{ f.factura.cliente.nombre }}</td>
+          <td>{% if f.es_contado %}Contado{% else %}{{ f.factura.modalidad_pago.nombre }}{% endif %}</td>
+          <td>{{ f.factura.resultado_nombre }}</td>
+          <td>{{ f.dejo|default:"—" }}</td>
+          <td class="r">{{ f.facturado|moneda }}</td>
+          <td class="r">{{ f.entregado|moneda }}</td>
+          <td class="r">{{ f.devuelto|moneda }}</td>
+          <td class="r">{{ f.cobrado|moneda }}</td>
+        </tr>
+        {% if f.pagos %}
+        <tr class="pagos">
+          <td></td>
+          <td colspan="8">
+            <span class="pg-t">Pagado con:</span>
+            {% for p in f.pagos %}<span class="pg"><b>{{ p.forma }}</b> C$ {{ p.monto|moneda }}{% if p.numero %} · {{ p.etiqueta }} <b>{{ p.numero }}</b>{% endif %}</span>{% endfor %}
+          </td>
+        </tr>
+        {% endif %}
+        {% empty %}
+        <tr><td colspan="9">Esta carga no tiene facturas.</td></tr>
+        {% endfor %}
+        <tr class="tot">
+          <td colspan="5">Total ({{ r.total_facturas }} factura{{ r.total_facturas|pluralize }})</td>
+          <td class="r">C$ {{ r.totales.facturado|moneda }}</td>
+          <td class="r">C$ {{ r.totales.entregado|moneda }}</td>
+          <td class="r">C$ {{ r.totales.devuelto|moneda }}</td>
+          <td class="r">C$ {{ r.totales.cobrado|moneda }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Cuadre de dinero</h2>
+    <table>
+      <thead><tr><th>Forma de pago</th><th class="r">Según sistema</th><th class="r">Recibido</th><th class="r">Diferencia</th></tr></thead>
+      <tbody>
+        {% for c in r.cuadre %}
+        <tr><td>{{ c.nombre }}</td><td class="r">{{ c.segun_sistema|moneda }}</td><td class="r">{{ c.recibido|moneda|default:"—" }}</td><td class="r">{{ c.diferencia|moneda_signo|default:"—" }}</td></tr>
+        {% endfor %}
+        <tr class="tot"><td>Total dinero</td><td class="r">C$ {{ r.total_sistema|moneda }}</td><td class="r">{% if r.total_recibido is not None %}C$ {{ r.total_recibido|moneda }}{% else %}—{% endif %}</td><td class="r">{% if r.total_diferencia is not None %}C$ {{ r.total_diferencia|moneda_signo }}{% else %}—{% endif %}</td></tr>
+        {% if r.nota_credito_cantidad %}
+        <tr><td>Nota de crédito — documento, no es dinero</td><td class="r">{{ r.nota_credito_total|moneda }}</td><td class="r">—</td><td class="r">—</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+    {% if r.contado.falto %}
+    <div class="nota">Contado no cobrado (queda en cartera): <b>C$ {{ r.contado.falto|moneda }}</b> —
+      {% for d in r.contado.detalle %}{{ d.factura.numero_factura }} {{ d.factura.cliente.nombre }} (C$ {{ d.falto|moneda }}){% if not forloop.last %}; {% endif %}{% endfor %}.</div>
+    {% endif %}
+
+    <h2>Devoluciones</h2>
+    <table>
+      <thead><tr><th>Producto</th><th class="r">Cantidad</th><th>Factura</th><th>Doc. devolución</th><th>Motivo</th><th>Área responsable</th><th>Recibido en bodega</th></tr></thead>
+      <tbody>
+        {% for d in r.devoluciones %}
+        <tr>
+          <td>{{ d.factura_detalle.producto.nombre }}</td>
+          <td class="r">{{ d.cantidad_devuelta|cantidad }}</td>
+          <td>{{ d.entrega.factura.numero_factura }}</td>
+          <td>{{ d.entrega.documento_devolucion|default:"—" }}</td>
+          <td>{{ d.motivo_nombre|default:"—" }}</td>
+          <td>{{ d.area_nombre|default:"—" }}</td>
+          <td>{% if d.recibido_bodega %}Sí{% else %}No{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7">No hubo devoluciones en esta carga.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if r.sin_visitar %}
+    <h2>Facturas liberadas (sin visitar)</h2>
+    <table>
+      <tbody>
+        {% for f in r.sin_visitar %}
+        <tr><td><b>{{ f.numero_factura }}</b></td><td>{{ f.cliente.nombre }}</td><td>{{ f.modalidad_pago.nombre }}</td><td class="r">C$ {{ f.total|moneda }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {% if carga.observaciones_repartidor or carga.observaciones_cierre %}
+    <h2>Observaciones</h2>
+    {% if carga.observaciones_repartidor %}<div class="nota">Repartidor: {{ carga.observaciones_repartidor }}</div>{% endif %}
+    {% if carga.observaciones_cierre %}<div class="nota">Oficina: {{ carga.observaciones_cierre }}</div>{% endif %}
+    {% endif %}
+
+    <div class="firmas">
+      <div>Conductor / repartidor</div>
+      <div>Recibe dinero (oficina)</div>
+      <div>Recibe devoluciones (bodega)</div>
+    </div>
+  </div>
+
+</body>
+</html>

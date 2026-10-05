@@ -6,7 +6,10 @@
       <a href="{% url 'entregas_lista' original.pk %}" class="button" target="_blank">Registrar entregas</a>
     </li>
     <li>
-      <a href="{% url 'admin:core_carga_imprimir' original.pk %}" class="button" target="_blank">Imprimir reporte</a>
+      <a href="{% url 'admin:core_carga_cierre' original.pk %}" class="button">{% if original.esta_cerrada %}Ver cierre{% else %}Cerrar carga{% endif %}</a>
+    </li>
+    <li>
+      <a href="{% url 'admin:core_carga_imprimir' original.pk %}" class="button" target="_blank">{% if original.esta_cerrada %}Imprimir reporte de cierre{% else %}Imprimir reporte{% endif %}</a>
     </li>
   {% endif %}
   {{ block.super }}

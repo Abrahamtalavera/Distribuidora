@@ -1,0 +1,91 @@
+{% extends "core/entregas/base.html" %}
+{% load formato %}
+
+{% block titulo %}Terminar ruta{% endblock %}
+
+{% block header %}
+<header class="app-header">
+  <div class="titulo">
+    <a class="btn-back" href="{% url 'entregas_lista' carga.id %}">&#8592;</a>
+    Terminar ruta
+  </div>
+  <div class="subtitulo">Carga #{{ carga.id }}{% if carga.ruta %} · {{ carga.ruta.nombre }}{% endif %}</div>
+</header>
+{% endblock %}
+
+{% block content %}
+<form method="post" id="form-terminar">
+  {% csrf_token %}
+
+  {% if error %}<div class="aviso error">{{ error }}</div>{% endif %}
+
+  {% if r.sin_visitar %}
+    <div class="aviso warn">
+      <b>{{ r.sin_visitar|length }} factura{{ r.sin_visitar|length|pluralize }} sin visitar:</b>
+      {% for f in r.sin_visitar %}{{ f.numero_factura }} {{ f.cliente.nombre }}{% if not forloop.last %}; {% endif %}{% endfor %}.
+      Al cerrar la carga volverá{{ r.sin_visitar|length|pluralize:"n" }} a planeación para otra carga.
+    </div>
+  {% endif %}
+
+  <div class="seccion">
+    <h3>Lo que debes entregar en oficina</h3>
+    {% for c in r.cuadre %}
+      <div class="kv"><span class="l">{{ c.nombre }}{% if c.cantidad and c.codigo != "EFECTIVO" %} ({{ c.cantidad }}){% endif %}</span><span>C$ {{ c.segun_sistema|moneda }}</span></div>
+    {% endfor %}
+    <div class="kv tot"><span>Dinero a entregar</span><span>C$ {{ r.total_sistema|moneda }}</span></div>
+    {% if r.nota_credito_cantidad %}
+      <div class="kv" style="margin-top:6px"><span class="l">Notas de crédito ({{ r.nota_credito_cantidad }}) · documento, no es dinero</span><span>C$ {{ r.nota_credito_total|moneda }}</span></div>
+    {% endif %}
+  </div>
+
+  <div class="seccion">
+    <h3>Devoluciones en el camión</h3>
+    <div class="kv"><span class="l">Productos devueltos</span><span>{{ r.devoluciones|length }}</span></div>
+    <div class="kv"><span class="l">Valor devuelto</span><span>C$ {{ r.valor_devuelto|moneda }}</span></div>
+    <div class="kv"><span class="l">Documentos de devolución</span><span>{{ r.docs_devolucion }}</span></div>
+  </div>
+
+  <div class="seccion">
+    <h3>Kilometraje</h3>
+    <div class="kv"><span class="l">Km inicial</span><span>{% if carga.km_inicial is not None %}{{ carga.km_inicial|km }}{% else %}—{% endif %}</span></div>
+    <div class="campo-form" style="margin-top:8px">
+      <label>Km final</label>
+      <input type="number" name="km_final" id="kmFinal" step="0.1" min="0" inputmode="decimal" required
+             value="{{ km_escrito }}" data-inicial="{% if carga.km_inicial is not None %}{{ carga.km_inicial|plano_km }}{% endif %}"
+             placeholder="Kilometraje al regresar">
+    </div>
+    <div class="kv"><span class="l">Recorrido</span><span id="kmRecorrido">—</span></div>
+  </div>
+
+  <div class="seccion">
+    <h3>Observaciones</h3>
+    <div class="campo-form">
+      <textarea name="observaciones" placeholder="Novedades de la ruta (opcional)">{{ observaciones }}</textarea>
+    </div>
+  </div>
+</form>
+{% endblock %}
+
+{% block barra_inferior %}
+<div class="barra-inferior">
+  <button class="btn-guardar" type="submit" form="form-terminar">Confirmar: terminé mi ruta</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  "use strict";
+  var km = document.getElementById("kmFinal");
+  var salida = document.getElementById("kmRecorrido");
+  function actualizar() {
+    var inicial = parseFloat(km.dataset.inicial);
+    var v = parseFloat(km.value);
+    if (isNaN(inicial) || isNaN(v) || v < inicial) { salida.textContent = "—"; return; }
+    salida.textContent = (v - inicial).toFixed(1) + " km";
+  }
+  km.addEventListener("input", actualizar);
+  actualizar();
+})();
+</script>
+{% endblock %}

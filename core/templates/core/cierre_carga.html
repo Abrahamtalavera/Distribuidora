@@ -1,0 +1,353 @@
+{% load formato %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cierre de {{ carga.codigo_reporte }} — Sol Maya</title>
+<style>
+  :root {
+    --primary:#417690; --primary-dark:#2b4f5e; --accent-light:#e8f1f5; --border:#ddd; --text:#2c2c2c; --muted:#757575;
+    --ok:#2e7d32; --ok-bg:#e8f5e9; --warn:#b26a00; --warn-bg:#fff3e0; --pend:#757575; --pend-bg:#eee; --danger:#a94442; --danger-bg:#fdecea;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif; background:#eef0f1; color:var(--text); padding:16px 12px 40px; }
+  .volver { max-width:1000px; margin:0 auto 10px; font-size:13px; }
+  .volver a { color:var(--primary); text-decoration:none; }
+  .desk { max-width:1000px; margin:0 auto; background:#fff; border:1px solid var(--border); }
+  .desk-head { background:var(--primary); color:#fff; padding:14px 20px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+  .desk-head h1 { margin:0; font-size:18px; font-weight:600; }
+  .desk-head .sub { font-size:12px; opacity:.9; margin-top:3px; }
+  .estado-pill { padding:5px 12px; border-radius:14px; font-size:12px; font-weight:700; background:#f7c948; color:#4a3b00; }
+  .estado-pill.cerrada { background:#c8e6c9; color:#1b5e20; }
+  .desk-body { padding:16px 20px 20px; }
+  .seccion { border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:12px; background:#fff; }
+  .seccion h3 { font-size:13px; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); margin:0 0 10px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:14px; }
+  .tile { border:1px solid var(--border); border-radius:8px; padding:10px 12px; }
+  .tile .n { font-size:22px; font-weight:700; }
+  .tile .t { font-size:12px; color:var(--muted); }
+  .tile .m { font-size:12px; margin-top:2px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { text-align:left; font-size:11px; text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--border); padding:6px 8px; }
+  td { padding:7px 8px; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
+  td.r, th.r { text-align:right; white-space:nowrap; }
+  tr.tot td { font-weight:700; border-top:2px solid var(--border); border-bottom:none; }
+  .scroll { overflow-x:auto; }
+  .badge { display:inline-block; font-size:11px; font-weight:600; padding:3px 8px; border-radius:10px; white-space:nowrap; }
+  .badge-pendiente { background:var(--pend-bg); color:var(--pend); }
+  .badge-parcial { background:var(--warn-bg); color:var(--warn); }
+  .badge-completa { background:var(--ok-bg); color:var(--ok); }
+  .badge-noentregada { background:var(--danger-bg); color:var(--danger); }
+  .badge-contado { background:var(--accent-light); color:var(--primary-dark); }
+  .badge-credito { background:#f3e5f5; color:#6a1b9a; }
+  .in-num { width:130px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:14px; text-align:right; font-family:inherit; }
+  .dif-ok { color:var(--ok); font-weight:700; } .dif-mal { color:var(--danger); font-weight:700; }
+  .detalle { font-size:12px; color:var(--muted); }
+  .kv { display:flex; justify-content:space-between; gap:10px; font-size:14px; padding:4px 0; align-items:center; }
+  .kv .l { color:var(--muted); }
+  .kv.tot { border-top:1px solid #eee; margin-top:4px; padding-top:8px; font-weight:700; }
+  .aviso { padding:9px 12px; border-radius:8px; font-size:13px; margin-bottom:12px; }
+  .aviso.warn { background:var(--warn-bg); color:#6b4f00; }
+  .aviso.ok { background:var(--ok-bg); color:var(--ok); }
+  .aviso.error { background:var(--danger-bg); color:var(--danger); }
+  .aviso.info { background:var(--accent-light); color:var(--primary-dark); }
+  .dos { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:720px) { .dos { grid-template-columns:1fr; } }
+  textarea { width:100%; padding:9px 10px; border:1px solid var(--border); border-radius:6px; font-size:14px; font-family:inherit; resize:vertical; }
+  .acciones { display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; margin-top:14px; }
+  .btn-sec { background:#fff; color:var(--primary); border:1px solid var(--primary); padding:10px 16px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; text-decoration:none; font-family:inherit; }
+  .btn-danger { background:#fff; color:var(--danger); border:1px solid var(--danger); padding:10px 16px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; }
+  .btn-cerrar { background:var(--ok); color:#fff; border:none; padding:11px 22px; border-radius:8px; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .oculto { display:none !important; }
+</style>
+</head>
+<body>
+<div class="volver"><a href="{% url 'admin:core_carga_change' carga.pk %}">&larr; Volver a la ficha de la Carga</a></div>
+
+<div class="desk">
+  <div class="desk-head">
+    <div>
+      <h1>Cierre de {{ carga.codigo_reporte }}</h1>
+      <div class="sub">
+        {{ carga.ruta|default:"Sin ruta" }} · {{ carga.fecha_planeada|date:"d/m/Y" }}
+        · Conductor: {{ carga.conductor|default:"—" }} · Vehículo: {{ carga.vehiculo|default:"—" }}
+      </div>
+    </div>
+    <span class="estado-pill{% if carga.esta_cerrada %} cerrada{% endif %}">
+      {% if carga.esta_cerrada %}Cerrada{% elif carga.estado == "RUTA_TERMINADA" %}Ruta terminada — pendiente de cierre{% else %}{{ carga.get_estado_display }} — el repartidor no ha terminado{% endif %}
+    </span>
+  </div>
+
+  <div class="desk-body">
+    {% for message in messages %}
+      <div class="aviso {% if message.tags == 'error' %}error{% else %}ok{% endif %}">{{ message }}</div>
+    {% endfor %}
+
+    {% if carga.esta_cerrada %}
+      <div class="aviso ok"><b>Carga cerrada</b>{% if carga.cerrada_por %} por {{ carga.cerrada_por.get_username }}{% endif %} el {{ carga.cerrada_en|date:"d/m/Y H:i" }}. El repartidor ya no puede modificarla.</div>
+    {% elif carga.estado != "RUTA_TERMINADA" %}
+      <div class="aviso warn">El repartidor todavía no ha marcado "Terminé mi ruta". Puedes cerrar la carga de todos modos; al cerrar, las facturas sin visitar se liberan.</div>
+    {% endif %}
+
+    <form method="post" id="form-cierre">
+      {% csrf_token %}
+
+      <div class="seccion">
+        <h3>Resumen de entregas</h3>
+        <div class="grid">
+          <div class="tile"><div class="n">{{ r.conteo.COMPLETA.cantidad }}</div><div class="t">Entregadas completas</div><div class="m">C$ {{ r.conteo.COMPLETA.entregado|moneda }}</div></div>
+          <div class="tile"><div class="n">{{ r.conteo.CON_DEVOLUCION.cantidad }}</div><div class="t">Con devolución</div><div class="m">C$ {{ r.conteo.CON_DEVOLUCION.entregado|moneda }} entregado</div></div>
+          <div class="tile"><div class="n">{{ r.conteo.NO_ENTREGADA.cantidad }}</div><div class="t">No entregadas</div><div class="m">C$ {{ r.conteo.NO_ENTREGADA.devuelto|moneda }} devuelto</div></div>
+          <div class="tile"><div class="n">{{ r.conteo.SIN_VISITAR.cantidad }}</div><div class="t">Sin visitar</div><div class="m">{% if carga.esta_cerrada %}liberadas al cerrar{% else %}se liberan al cerrar{% endif %}</div></div>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Factura</th><th>Cliente</th><th>Modalidad</th><th>Resultado</th><th>Dejó</th>
+                <th class="r">Facturado</th><th class="r">Entregado</th><th class="r">Devuelto</th><th class="r">Cobrado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for f in r.filas %}
+              <tr>
+                <td><b>{{ f.factura.numero_factura }}</b></td>
+                <td>{{ f.factura.cliente.nombre }}</td>
+                <td>{% if f.es_contado %}<span class="badge badge-contado">Contado</span>{% else %}<span class="badge badge-credito">{{ f.factura.modalidad_pago.nombre }}</span>{% endif %}</td>
+                <td><span class="badge badge-{{ f.factura.resultado_css }}">{{ f.factura.resultado_nombre }}</span></td>
+                <td>{{ f.dejo|default:"—" }}</td>
+                <td class="r">{{ f.facturado|moneda }}</td>
+                <td class="r">{{ f.entregado|moneda }}</td>
+                <td class="r">{{ f.devuelto|moneda }}</td>
+                <td class="r">{{ f.cobrado|moneda }}</td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="9">Esta carga no tiene facturas.</td></tr>
+              {% endfor %}
+              <tr class="tot">
+                <td colspan="5">Total ({{ r.total_facturas }} factura{{ r.total_facturas|pluralize }})</td>
+                <td class="r">C$ {{ r.totales.facturado|moneda }}</td>
+                <td class="r">C$ {{ r.totales.entregado|moneda }}</td>
+                <td class="r">C$ {{ r.totales.devuelto|moneda }}</td>
+                <td class="r">C$ {{ r.totales.cobrado|moneda }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="dos">
+        <div class="seccion">
+          <h3>Cuadre de dinero</h3>
+          <div class="scroll">
+            <table>
+              <thead><tr><th>Forma de pago</th><th class="r">Según sistema</th><th class="r">Recibido</th><th class="r">Diferencia</th></tr></thead>
+              <tbody id="cuadre">
+                {% for c in r.cuadre %}
+                <tr data-sistema="{{ c.segun_sistema|plano }}">
+                  <td>{{ c.nombre }}</td>
+                  <td class="r">{{ c.segun_sistema|moneda }}</td>
+                  {% if carga.esta_cerrada %}
+                    <td class="r">{{ c.recibido|moneda|default:"—" }}</td>
+                    <td class="r {% if c.diferencia %}dif-mal{% else %}dif-ok{% endif %}">{{ c.diferencia|moneda_signo|default:"—" }}</td>
+                  {% else %}
+                    <td class="r"><input type="number" step="0.01" min="0" class="in-num rec" name="recibido_{{ c.codigo }}" value="{{ c.valor_input }}" placeholder="Contar y escribir" required></td>
+                    <td class="r dif"></td>
+                  {% endif %}
+                </tr>
+                {% endfor %}
+                <tr class="tot">
+                  <td>Total</td>
+                  <td class="r">C$ {{ r.total_sistema|moneda }}</td>
+                  {% if carga.esta_cerrada %}
+                    <td class="r">{% if r.total_recibido is not None %}C$ {{ r.total_recibido|moneda }}{% else %}—{% endif %}</td>
+                    <td class="r {% if r.total_diferencia %}dif-mal{% else %}dif-ok{% endif %}">{% if r.total_diferencia is not None %}C$ {{ r.total_diferencia|moneda_signo }}{% else %}—{% endif %}</td>
+                  {% else %}
+                    <td class="r" id="totalRecibido"></td>
+                    <td class="r" id="totalDiferencia"></td>
+                  {% endif %}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          {% if r.nota_credito_cantidad %}
+            <div class="kv" style="margin-top:8px"><span class="l">Notas de crédito (documento, no es dinero)</span><span><b>C$ {{ r.nota_credito_total|moneda }}</b></span></div>
+          {% endif %}
+          {% if r.documentos %}
+          <div class="detalle" style="margin-top:8px">
+            <b>Documentos que respaldan los cobros</b><br>
+            {% for grupo in r.documentos %}
+              {% if grupo.codigo == "EFECTIVO" %}Recibos de efectivo{% else %}{{ grupo.nombre }}{% endif %}:
+              {% for d in grupo.items %}{{ d.numero|default:"(sin número)" }} · {{ d.factura }} · C$ {{ d.monto|moneda }}{% if not forloop.last %} &nbsp;|&nbsp; {% endif %}{% endfor %}<br>
+            {% endfor %}
+          </div>
+          {% endif %}
+          {% if not carga.esta_cerrada %}
+            <div class="aviso warn oculto" id="avisoDiferencia" style="margin:10px 0 0">Hay diferencia: escribe el motivo en Observaciones para poder cerrar.</div>
+          {% endif %}
+        </div>
+
+        <div class="seccion">
+          <h3>Cobro de contado pendiente</h3>
+          <div class="kv"><span class="l">Valor entregado en contado</span><span>C$ {{ r.contado.entregado|moneda }}</span></div>
+          <div class="kv"><span class="l">Cobrado en dinero</span><span>C$ {{ r.contado.dinero|moneda }}</span></div>
+          <div class="kv"><span class="l">Cobrado con nota de crédito</span><span>C$ {{ r.contado.nota_credito|moneda }}</span></div>
+          <div class="kv tot"><span>Faltó cobrar</span><span{% if r.contado.falto %} style="color:var(--warn)"{% endif %}>C$ {{ r.contado.falto|moneda }}</span></div>
+          {% for d in r.contado.detalle %}
+            <div class="detalle" style="margin-top:4px">{{ d.factura.numero_factura }} {{ d.factura.cliente.nombre }}: C$ {{ d.falto|moneda }} queda en cartera.</div>
+          {% endfor %}
+
+          <h3 style="margin-top:14px">Kilometraje</h3>
+          <div class="kv"><span class="l">Km inicial</span><span>{% if carga.km_inicial is not None %}{{ carga.km_inicial|km }}{% else %}—{% endif %}</span></div>
+          <div class="kv">
+            <span class="l">Km final</span>
+            <span>
+              {% if carga.esta_cerrada %}
+                {% if carga.km_final is not None %}{{ carga.km_final|km }}{% else %}—{% endif %}
+              {% else %}
+                <input class="in-num" type="number" step="0.1" min="0" name="km_final" id="kmFinal"
+                       value="{% if km_escrito is not None %}{{ km_escrito }}{% else %}{{ carga.km_final|plano_km }}{% endif %}"
+                       data-inicial="{% if carga.km_inicial is not None %}{{ carga.km_inicial|plano_km }}{% endif %}">
+              {% endif %}
+            </span>
+          </div>
+          <div class="kv tot"><span>Recorrido</span><span id="kmRecorrido">{% if r.km_recorrido is not None %}{{ r.km_recorrido|km }} km{% else %}—{% endif %}</span></div>
+        </div>
+      </div>
+
+      <div class="seccion">
+        <h3>Devoluciones que regresan a bodega</h3>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Producto</th><th class="r">Cantidad</th><th>Factura</th><th>Doc. devolución</th><th>Motivo</th><th>Área responsable</th><th>Recibido en bodega</th></tr></thead>
+            <tbody>
+              {% for d in r.devoluciones %}
+              <tr>
+                <td>{{ d.factura_detalle.producto.nombre }}</td>
+                <td class="r">{{ d.cantidad_devuelta|cantidad }}</td>
+                <td>{{ d.entrega.factura.numero_factura }}</td>
+                <td>{{ d.entrega.documento_devolucion|default:"—" }}</td>
+                <td>{{ d.motivo_nombre|default:"—" }}</td>
+                <td>{{ d.area_nombre|default:"—" }}</td>
+                <td>
+                  {% if carga.esta_cerrada %}
+                    {% if d.recibido_bodega %}Sí{% else %}No{% endif %}
+                  {% else %}
+                    <label><input type="checkbox" name="dev_recibida" value="{{ d.id }}"{% if d.marcado %} checked{% endif %}> Recibido</label>
+                  {% endif %}
+                </td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="7">No hay devoluciones en esta carga.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {% if r.sin_visitar %}
+      <div class="seccion">
+        <h3>Facturas sin visitar ({% if carga.esta_cerrada %}liberadas al cerrar{% else %}se liberan al cerrar{% endif %})</h3>
+        <div class="scroll">
+          <table>
+            <tbody>
+              {% for f in r.sin_visitar %}
+              <tr>
+                <td><b>{{ f.numero_factura }}</b></td>
+                <td>{{ f.cliente.nombre }}</td>
+                <td>{% if f.modalidad_pago.codigo == "CONTADO" %}<span class="badge badge-contado">Contado</span>{% else %}<span class="badge badge-credito">{{ f.modalidad_pago.nombre }}</span>{% endif %}</td>
+                <td class="r">C$ {{ f.total|moneda }}</td>
+                <td>{% if carga.esta_cerrada %}Quedó "Sin carga asignada" para reprogramarla{% else %}Quedará "Sin carga asignada" para reprogramarla{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="seccion">
+        <h3>Observaciones del cierre</h3>
+        {% if carga.observaciones_repartidor %}<div class="detalle" style="margin-bottom:6px">Repartidor: "{{ carga.observaciones_repartidor }}"</div>{% endif %}
+        {% if carga.esta_cerrada %}
+          <div>{{ carga.observaciones_cierre|default:"(sin observaciones de oficina)" }}</div>
+        {% else %}
+          <textarea name="observaciones_cierre" id="obsCierre" rows="2" placeholder="Observaciones de oficina (obligatorio si hay diferencia de dinero)">{{ obs_escrita }}</textarea>
+        {% endif %}
+      </div>
+
+      <div class="acciones">
+        {% if carga.esta_cerrada %}
+          <button class="btn-danger" type="submit" name="accion" value="reabrir" formnovalidate>Reabrir Carga</button>
+          <a class="btn-sec" href="{% url 'admin:core_carga_imprimir' carga.pk %}" target="_blank">Imprimir reporte de cierre</a>
+        {% else %}
+          {% if carga.estado == "RUTA_TERMINADA" %}
+            <button class="btn-sec" type="submit" name="accion" value="devolver" formnovalidate>Devolver a ruta</button>
+          {% endif %}
+          <a class="btn-sec" href="{% url 'entregas_lista' carga.pk %}" target="_blank">Corregir entregas</a>
+          <button class="btn-cerrar" type="submit" name="accion" value="cerrar">Cerrar Carga</button>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if not carga.esta_cerrada %}
+<script>
+(function () {
+  "use strict";
+  function fmt(n) { return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function redondear(n) { return Math.round(n * 100) / 100; }
+  var cuerpo = document.getElementById("cuadre");
+  var aviso = document.getElementById("avisoDiferencia");
+  var obs = document.getElementById("obsCierre");
+
+  function cuadrar() {
+    var totalRec = 0, totalDif = 0, completo = true, hayDif = false;
+    cuerpo.querySelectorAll("tr[data-sistema]").forEach(function (fila) {
+      var inp = fila.querySelector(".rec");
+      var celda = fila.querySelector(".dif");
+      var sistema = parseFloat(fila.dataset.sistema) || 0;
+      if (inp.value === "") { completo = false; celda.textContent = "—"; celda.className = "r dif"; return; }
+      var v = parseFloat(inp.value) || 0;
+      var d = redondear(v - sistema);
+      totalRec += v; totalDif += d;
+      if (d !== 0) hayDif = true;
+      celda.textContent = (d > 0 ? "+" : "") + fmt(d);
+      celda.className = "r dif " + (d === 0 ? "dif-ok" : "dif-mal");
+    });
+    totalDif = redondear(totalDif);
+    var tr = document.getElementById("totalRecibido"), td = document.getElementById("totalDiferencia");
+    tr.textContent = completo ? "C$ " + fmt(totalRec) : "—";
+    td.textContent = completo ? "C$ " + (totalDif > 0 ? "+" : "") + fmt(totalDif) : "—";
+    td.className = "r " + (!completo ? "" : hayDif ? "dif-mal" : "dif-ok");
+    aviso.classList.toggle("oculto", !hayDif);
+    return hayDif;
+  }
+  cuerpo.addEventListener("input", cuadrar);
+  cuadrar();
+
+  var km = document.getElementById("kmFinal");
+  if (km) {
+    km.addEventListener("input", function () {
+      var inicial = parseFloat(km.dataset.inicial), v = parseFloat(km.value);
+      document.getElementById("kmRecorrido").textContent =
+        isNaN(inicial) || isNaN(v) || v < inicial ? "—" : (v - inicial).toFixed(1) + " km";
+    });
+  }
+
+  document.getElementById("form-cierre").addEventListener("submit", function (ev) {
+    var boton = ev.submitter;
+    if (!boton || boton.value !== "cerrar") return;
+    if (cuadrar() && !obs.value.trim()) {
+      ev.preventDefault();
+      obs.style.borderColor = "#a94442";
+      obs.focus();
+    }
+  });
+})();
+</script>
+{% endif %}
+</body>
+</html>
