@@ -218,29 +218,54 @@
 
       <div class="seccion">
         <h3>Devoluciones que regresan a bodega</h3>
+        {# Cambio #16: la recepción la registra bodega en su propia pantalla; oficina solo la consulta. #}
+        {% if r.devoluciones %}
+          {% if r.recepcion.confirmada %}
+            <div class="aviso {% if r.recepcion.hay_diferencia %}warn{% else %}ok{% endif %}">
+              <b>Recibido en bodega{% if r.recepcion.hay_diferencia %} con diferencia{% endif %}</b>{% if carga.devoluciones_recibidas_por %} por {{ carga.devoluciones_recibidas_por.get_username }}{% endif %} el {{ carga.devoluciones_recibidas_en|date:"d/m/Y H:i" }}.
+              {% if carga.observaciones_bodega %}<br>Observación de bodega: "{{ carga.observaciones_bodega }}"{% endif %}
+            </div>
+          {% else %}
+            <div class="aviso warn">
+              <b>Bodega todavía no ha recibido estas devoluciones{% if r.recepcion.faltan and carga.devoluciones_recibidas_en %} ({{ r.recepcion.faltan }} producto{{ r.recepcion.faltan|pluralize }} sin recibir){% endif %}.</b>
+              {% if carga.esta_cerrada %}Bodega puede registrar la recepción aunque la carga ya esté cerrada.{% else %}Puedes cerrar la carga de todos modos; bodega podrá registrar la recepción después.{% endif %}
+            </div>
+          {% endif %}
+        {% endif %}
         <div class="scroll">
           <table>
-            <thead><tr><th>Producto</th><th class="r">Cantidad</th><th>Factura</th><th>Doc. devolución</th><th>Motivo</th><th>Área responsable</th><th>Recibido en bodega</th></tr></thead>
+            <thead><tr><th>Producto</th><th>Factura</th><th>Doc. devolución</th><th>Motivo</th><th>Área responsable</th><th class="r">Reportado</th><th class="r">A inventario</th><th class="r">Merma</th><th class="r">Recibido</th><th class="r">Diferencia</th></tr></thead>
             <tbody>
               {% for d in r.devoluciones %}
               <tr>
                 <td>{{ d.factura_detalle.producto.nombre }}</td>
-                <td class="r">{{ d.cantidad_devuelta|cantidad }}</td>
                 <td>{{ d.entrega.factura.numero_factura }}</td>
                 <td>{{ d.entrega.documento_devolucion|default:"—" }}</td>
                 <td>{{ d.motivo_nombre|default:"—" }}</td>
                 <td>{{ d.area_nombre|default:"—" }}</td>
-                <td>
-                  {% if carga.esta_cerrada %}
-                    {% if d.recibido_bodega %}Sí{% else %}No{% endif %}
-                  {% else %}
-                    <label><input type="checkbox" name="dev_recibida" value="{{ d.id }}"{% if d.marcado %} checked{% endif %}> Recibido</label>
-                  {% endif %}
-                </td>
+                <td class="r">{{ d.cantidad_devuelta|cantidad }}</td>
+                <td class="r">{{ d.recibido_inventario|cantidad|default:"—" }}</td>
+                <td class="r">{{ d.recibido_merma|cantidad|default:"—" }}</td>
+                <td class="r">{{ d.recibido_total|cantidad|default:"—" }}</td>
+                <td class="r {% if d.diferencia_recepcion %}dif-mal{% elif d.recepcion_registrada %}dif-ok{% endif %}">{{ d.diferencia_recepcion|cantidad_signo|default:"—" }}</td>
               </tr>
               {% empty %}
-              <tr><td colspan="7">No hay devoluciones en esta carga.</td></tr>
+              <tr><td colspan="10">No hay devoluciones en esta carga.</td></tr>
               {% endfor %}
+              {% if r.devoluciones %}
+              <tr class="tot">
+                <td colspan="5">Total</td>
+                <td class="r">{{ r.recepcion.totales.reportado|cantidad }}</td>
+                {% if r.recepcion.confirmada %}
+                  <td class="r">{{ r.recepcion.totales.inventario|cantidad }}</td>
+                  <td class="r">{{ r.recepcion.totales.merma|cantidad }}</td>
+                  <td class="r">{{ r.recepcion.totales.recibido|cantidad }}</td>
+                  <td class="r {% if r.recepcion.diferencia_total %}dif-mal{% else %}dif-ok{% endif %}">{{ r.recepcion.diferencia_total|cantidad_signo }}</td>
+                {% else %}
+                  <td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td>
+                {% endif %}
+              </tr>
+              {% endif %}
             </tbody>
           </table>
         </div>

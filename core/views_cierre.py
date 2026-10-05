@@ -96,7 +96,6 @@ def cierre_carga_view(request, pk):
                     },
                     "observaciones": request.POST.get("observaciones_cierre", ""),
                     "km_final": request.POST.get("km_final", "").strip(),
-                    "devoluciones": set(request.POST.getlist("dev_recibida")),
                 }
                 cerrar_carga(
                     carga,
@@ -107,9 +106,6 @@ def cierre_carga_view(request, pk):
                     },
                     observaciones=escrito["observaciones"],
                     km_final=_decimal_o_none(escrito["km_final"]),
-                    devoluciones_recibidas=[
-                        i for i in escrito["devoluciones"] if i.isdigit()
-                    ],
                 )
                 messages.success(request, f"{carga.codigo_reporte} cerrada.")
             elif accion == "devolver":
@@ -143,11 +139,6 @@ def cierre_carga_view(request, pk):
             fila["valor_input"] = ""
         else:
             fila["valor_input"] = f"{fila['segun_sistema']:.2f}"
-    for d in r["devoluciones"]:
-        d.marcado = (
-            str(d.id) in escrito["devoluciones"] if "devoluciones" in escrito else d.recibido_bodega
-        )
-
     return render(
         request,
         "core/cierre_carga.html",

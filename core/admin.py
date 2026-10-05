@@ -303,6 +303,9 @@ class CargaAdmin(admin.ModelAdmin):
         "cerrada_en",
         "cerrada_por",
         "observaciones_cierre",
+        "devoluciones_recibidas_en",
+        "devoluciones_recibidas_por",
+        "observaciones_bodega",
     )
     inlines = [FacturaEnCargaInline]
     change_form_template = "admin/core/carga/change_form.html"
@@ -366,6 +369,8 @@ class EntregaDetalleInline(admin.TabularInline):
         "cantidad_entregada",
         "cantidad_devuelta",
         "motivo_devolucion",
+        "recibido_inventario",
+        "recibido_merma",
     )
     # "factura_detalle" es un FK a cualquier línea de cualquier factura; sin
     # esto, el admin intenta dibujar un <select> con las ~32,000 líneas que

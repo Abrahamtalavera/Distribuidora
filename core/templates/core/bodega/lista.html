@@ -1,0 +1,65 @@
+{% extends "core/bodega/base.html" %}
+{% load formato %}
+{% block titulo %}Devoluciones por recibir{% endblock %}
+{% block cuerpo %}
+<div class="desk">
+  <div class="desk-head">
+    <div><h1>Devoluciones por recibir</h1><div class="sub">Bodega de producto terminado</div></div>
+    {% include "core/bodega/_encabezado_usuario.html" %}
+  </div>
+  <div class="desk-body">
+    {% for message in messages %}
+      <div class="aviso {% if message.tags == 'error' %}error{% else %}ok{% endif %}">{{ message }}</div>
+    {% endfor %}
+
+    <div class="seccion">
+      <h3>Pendientes de recibir</h3>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Carga</th><th>Fecha</th><th>Ruta</th><th>Conductor</th><th>Estado de la carga</th><th class="r">Productos devueltos</th><th>Recepción</th></tr></thead>
+          <tbody>
+            {% for c in pendientes %}
+            <tr class="clic">
+              <td><a class="fila" href="{% url 'bodega_recepcion' c.id %}">{{ c.codigo_reporte }}</a></td>
+              <td>{{ c.fecha_planeada|date:"d/m/Y" }}</td>
+              <td>{{ c.ruta|default:"—" }}</td>
+              <td>{{ c.conductor|default:"—" }}</td>
+              <td>{{ c.get_estado_display }}</td>
+              <td class="r">{{ c.recepcion.productos }}</td>
+              <td><a class="btn-sec" style="padding:5px 12px;font-size:13px" href="{% url 'bodega_recepcion' c.id %}">Recibir</a></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7">No hay devoluciones pendientes de recibir.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="detalle" style="margin-top:8px">Una carga aparece aquí cuando el repartidor marca "Terminé mi ruta" y trae algo devuelto.</div>
+    </div>
+
+    <div class="seccion">
+      <h3>Recibidas (últimos 7 días)</h3>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Carga</th><th>Fecha</th><th>Ruta</th><th>Conductor</th><th>Recibió</th><th class="r">Productos</th><th>Recepción</th></tr></thead>
+          <tbody>
+            {% for c in recibidas %}
+            <tr class="clic">
+              <td><a class="fila" href="{% url 'bodega_recepcion' c.id %}">{{ c.codigo_reporte }}</a></td>
+              <td>{{ c.fecha_planeada|date:"d/m/Y" }}</td>
+              <td>{{ c.ruta|default:"—" }}</td>
+              <td>{{ c.conductor|default:"—" }}</td>
+              <td>{% if c.devoluciones_recibidas_por %}{{ c.devoluciones_recibidas_por.get_username }} · {% endif %}{{ c.devoluciones_recibidas_en|date:"d/m H:i" }}</td>
+              <td class="r">{{ c.recepcion.productos }}</td>
+              <td><span class="badge badge-{{ c.recepcion.css }}">{{ c.recepcion.nombre }}</span></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7">No hay recepciones en los últimos 7 días.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

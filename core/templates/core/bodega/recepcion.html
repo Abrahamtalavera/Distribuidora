@@ -1,0 +1,160 @@
+{% extends "core/bodega/base.html" %}
+{% load formato %}
+{% block titulo %}Recibir devoluciones {{ carga.codigo_reporte }}{% endblock %}
+{% block cuerpo %}
+<div class="desk">
+  <div class="desk-head">
+    <div>
+      <h1>Recibir devoluciones — {{ carga.codigo_reporte }}</h1>
+      <div class="sub">{{ carga.ruta|default:"Sin ruta" }} · {{ carga.fecha_planeada|date:"d/m/Y" }} · Conductor: {{ carga.conductor|default:"—" }} · Vehículo: {{ carga.vehiculo|default:"—" }}</div>
+    </div>
+    <span class="pill{% if recepcion.estado == 'COMPLETA' %} ok{% elif recepcion.estado == 'CON_DIFERENCIA' %} dif{% endif %}">
+      {% if recepcion.estado == "PENDIENTE" %}Pendiente de recibir{% elif recepcion.estado == "COMPLETA" %}Recibida completa{% elif recepcion.estado == "CON_DIFERENCIA" %}Recibida con diferencia{% else %}Sin devoluciones{% endif %}
+    </span>
+  </div>
+  <div class="desk-body">
+    {% for message in messages %}
+      <div class="aviso {% if message.tags == 'error' %}error{% else %}ok{% endif %}">{{ message }}</div>
+    {% endfor %}
+
+    {% if recepcion.confirmada %}
+      <div class="aviso {% if recepcion.hay_diferencia %}warn{% else %}ok{% endif %}">
+        <b>Recepción confirmada{% if recepcion.hay_diferencia %} con diferencia{% endif %}</b>{% if carga.devoluciones_recibidas_por %} por {{ carga.devoluciones_recibidas_por.get_username }}{% endif %} el {{ carga.devoluciones_recibidas_en|date:"d/m/Y H:i" }}.
+      </div>
+    {% elif recepcion.faltan and carga.devoluciones_recibidas_en %}
+      <div class="aviso warn">Después de la recepción anterior entraron devoluciones nuevas: falta recibir {{ recepcion.faltan }} producto{{ recepcion.faltan|pluralize }}.</div>
+    {% endif %}
+
+    {% if not devoluciones %}
+      <div class="aviso ok">Esta carga no tiene devoluciones que recibir.</div>
+    {% else %}
+    <form method="post" id="form-recepcion">
+      {% csrf_token %}
+      <div class="seccion">
+        <h3>Productos devueltos</h3>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Producto</th><th>Factura</th><th>Doc. devolución</th><th>Motivo</th>
+                <th class="r">Reportado</th><th class="r">A inventario</th><th class="r">Merma</th><th class="r">Recibido</th><th class="r">Diferencia</th>
+              </tr>
+            </thead>
+            <tbody id="filas">
+              {% for d in devoluciones %}
+              <tr data-reportado="{{ d.cantidad_devuelta|plano_cant }}">
+                <td>{{ d.factura_detalle.producto.nombre }}</td>
+                <td>{{ d.entrega.factura.numero_factura }}</td>
+                <td>{{ d.entrega.documento_devolucion|default:"—" }}</td>
+                <td>{{ d.motivo_nombre|default:"—" }}</td>
+                <td class="r">{{ d.cantidad_devuelta|cantidad }}</td>
+                {% if editando %}
+                  <td class="r"><input type="number" min="0" step="0.001" inputmode="decimal" class="in-num inv" name="inv_{{ d.id }}" value="{{ d.valor_inv }}" placeholder="0"></td>
+                  <td class="r"><input type="number" min="0" step="0.001" inputmode="decimal" class="in-num mer" name="mer_{{ d.id }}" value="{{ d.valor_mer }}" placeholder="0"></td>
+                  <td class="r rec">—</td>
+                  <td class="r dif">—</td>
+                {% else %}
+                  <td class="r">{{ d.recibido_inventario|cantidad|default:"—" }}</td>
+                  <td class="r">{{ d.recibido_merma|cantidad|default:"—" }}</td>
+                  <td class="r">{{ d.recibido_total|cantidad|default:"—" }}</td>
+                  <td class="r {% if d.diferencia_recepcion %}dif-mal{% elif d.recepcion_registrada %}dif-ok{% endif %}">{{ d.diferencia_recepcion|cantidad_signo|default:"—" }}</td>
+                {% endif %}
+              </tr>
+              {% endfor %}
+              <tr class="tot">
+                <td colspan="4">Total</td>
+                <td class="r">{{ recepcion.totales.reportado|cantidad }}</td>
+                {% if editando %}
+                  <td class="r" id="tInv">—</td><td class="r" id="tMer">—</td><td class="r" id="tRec">—</td><td class="r" id="tDif">—</td>
+                {% else %}
+                  <td class="r">{{ recepcion.totales.inventario|cantidad }}</td>
+                  <td class="r">{{ recepcion.totales.merma|cantidad }}</td>
+                  <td class="r">{{ recepcion.totales.recibido|cantidad }}</td>
+                  <td class="r {% if recepcion.diferencia_total %}dif-mal{% else %}dif-ok{% endif %}">{{ recepcion.diferencia_total|cantidad_signo|default:"—" }}</td>
+                {% endif %}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        {% if editando %}
+          <div class="detalle" style="margin-top:8px">Cuenta el producto y escribe cuánto vuelve a inventario y cuánto es merma. Si de un producto no llegó nada, escribe 0.</div>
+        {% endif %}
+      </div>
+
+      <div class="seccion">
+        <h3>Observaciones de bodega</h3>
+        {% if editando %}
+          <div class="aviso warn oculto" id="avisoDif">Hay diferencia entre lo reportado y lo recibido: escribe el motivo para poder confirmar.</div>
+          <div class="aviso error oculto" id="avisoFalta">Falta escribir las cantidades de todos los productos.</div>
+          <textarea name="observaciones_bodega" id="obs" rows="2" placeholder="Obligatorio si hay diferencia (por ejemplo: faltó 1 bolsa, llegó rota...)">{{ obs_escrita }}</textarea>
+        {% else %}
+          <div>{{ carga.observaciones_bodega|default:"(sin observaciones)" }}</div>
+        {% endif %}
+      </div>
+
+      <div class="acciones">
+        <a class="btn-sec" href="{% url 'bodega_lista' %}">Volver a la lista</a>
+        {% if editando %}
+          <button class="btn-pri" type="submit">Confirmar recepción</button>
+        {% elif recepcion.editable %}
+          <a class="btn-sec" href="{% url 'bodega_recepcion' carga.id %}?corregir=1">Corregir recepción</a>
+        {% endif %}
+      </div>
+      {% if not editando and not recepcion.editable %}
+        <div class="detalle" style="text-align:right;margin-top:8px">La carga ya está cerrada: para corregir la recepción, oficina debe reabrirla.</div>
+      {% endif %}
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if editando and devoluciones %}
+<script>
+(function () {
+  "use strict";
+  function num(n) { return String(Math.round(n * 1000) / 1000); }
+  function signo(n) { n = Math.round(n * 1000) / 1000; return (n > 0 ? "+" : "") + n; }
+  var cuerpo = document.getElementById("filas");
+  var avisoDif = document.getElementById("avisoDif");
+  var avisoFalta = document.getElementById("avisoFalta");
+  var obs = document.getElementById("obs");
+
+  function calcular() {
+    var t = { inv: 0, mer: 0, rec: 0, rep: 0 }, completo = true, hayDif = false;
+    cuerpo.querySelectorAll("tr[data-reportado]").forEach(function (fila) {
+      var rep = parseFloat(fila.dataset.reportado) || 0;
+      var a = fila.querySelector(".inv").value, b = fila.querySelector(".mer").value;
+      var rec = fila.querySelector(".rec"), dif = fila.querySelector(".dif");
+      t.rep += rep;
+      if (a === "" && b === "") { completo = false; rec.textContent = "—"; dif.textContent = "—"; dif.className = "r dif"; return; }
+      var inv = parseFloat(a) || 0, mer = parseFloat(b) || 0, r = inv + mer;
+      var d = Math.round((r - rep) * 1000) / 1000;
+      t.inv += inv; t.mer += mer; t.rec += r;
+      rec.textContent = num(r);
+      dif.textContent = signo(d);
+      dif.className = "r dif " + (d === 0 ? "dif-ok" : "dif-mal");
+      if (d !== 0) hayDif = true;
+    });
+    document.getElementById("tInv").textContent = num(t.inv);
+    document.getElementById("tMer").textContent = num(t.mer);
+    document.getElementById("tRec").textContent = completo ? num(t.rec) : "—";
+    var td = document.getElementById("tDif");
+    td.textContent = completo ? signo(t.rec - t.rep) : "—";
+    td.className = "r " + (!completo ? "" : hayDif ? "dif-mal" : "dif-ok");
+    avisoDif.classList.toggle("oculto", !hayDif);
+    return { completo: completo, hayDif: hayDif };
+  }
+  cuerpo.addEventListener("input", function () { avisoFalta.classList.add("oculto"); calcular(); });
+  calcular();
+
+  document.getElementById("form-recepcion").addEventListener("submit", function (ev) {
+    var e = calcular();
+    if (!e.completo) { ev.preventDefault(); avisoFalta.classList.remove("oculto"); return; }
+    if (e.hayDif && !obs.value.trim()) { ev.preventDefault(); obs.style.borderColor = "#a94442"; obs.focus(); }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

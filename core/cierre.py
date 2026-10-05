@@ -17,8 +17,9 @@ from decimal import ROUND_HALF_UP, Decimal
 from django.db import transaction
 from django.utils import timezone
 
+from core.bodega import devoluciones_de_la_carga, resumen_recepcion
 from core.entregas import valor_unitario
-from core.models import CargaCuadre, EntregaDetalle, Factura, Pago
+from core.models import CargaCuadre, Factura, Pago
 
 CENTAVO = Decimal("0.01")
 CERO = Decimal("0")
@@ -253,22 +254,9 @@ def resumen_cierre(carga):
     recibidos = [c["recibido"] for c in cuadre if c["recibido"] is not None]
     total_recibido = sum(recibidos, CERO) if len(recibidos) == len(cuadre) else None
 
-    devoluciones = list(
-        EntregaDetalle.objects.filter(entrega__carga=carga, cantidad_devuelta__gt=0)
-        .select_related(
-            "entrega__factura",
-            "entrega__motivo_devolucion_general__area_responsable",
-            "factura_detalle__producto",
-            "motivo_devolucion__area_responsable",
-        )
-        .order_by("entrega__factura__numero_factura", "id")
-    )
-    for d in devoluciones:
-        motivo = d.motivo_devolucion or d.entrega.motivo_devolucion_general
-        d.motivo_nombre = motivo.nombre if motivo else ""
-        d.area_nombre = (
-            motivo.area_responsable.nombre if motivo and motivo.area_responsable else ""
-        )
+    # Cambio #16: las devoluciones y su recepción las registra bodega.
+    devoluciones = devoluciones_de_la_carga(carga)
+    recepcion = resumen_recepcion(carga, devoluciones)
     docs_devolucion = {
         d.entrega.documento_devolucion for d in devoluciones if d.entrega.documento_devolucion
     }
@@ -301,6 +289,7 @@ def resumen_cierre(carga):
             if items
         ],
         "devoluciones": devoluciones,
+        "recepcion": recepcion,
         "valor_devuelto": totales["devuelto"],
         "docs_devolucion": len(docs_devolucion),
         "km_recorrido": km_recorrido,
@@ -339,7 +328,19 @@ def devolver_a_ruta(carga):
         raise CierreError("Solo se puede devolver a ruta una carga con la ruta terminada.")
     carga.estado = "EN_RUTA"
     carga.ruta_terminada_en = None
-    carga.save(update_fields=["estado", "ruta_terminada_en"])
+    # Cambio #16: si el repartidor vuelve a ruta puede traer más
+    # devoluciones, así que bodega debe volver a confirmar la recepción
+    # (las cantidades que ya había escrito se conservan).
+    carga.devoluciones_recibidas_en = None
+    carga.devoluciones_recibidas_por = None
+    carga.save(
+        update_fields=[
+            "estado",
+            "ruta_terminada_en",
+            "devoluciones_recibidas_en",
+            "devoluciones_recibidas_por",
+        ]
+    )
     return carga
 
 
@@ -351,7 +352,6 @@ def cerrar_carga(
     recibido_por_forma,
     observaciones="",
     km_final=None,
-    devoluciones_recibidas=(),
 ):
     """
     Paso 2: oficina cierra la carga.
@@ -360,8 +360,8 @@ def cerrar_carga(
       recibió por cada forma de pago en dinero. Todas son obligatorias.
     - Si en cualquier forma lo recibido no coincide con el sistema, la
       observación de oficina es obligatoria.
-    - devoluciones_recibidas: ids de EntregaDetalle que bodega marcó como
-      recibidos (las demás quedan sin marcar; no bloquea el cierre).
+    - La recepción de las devoluciones la registra bodega en su propia
+      pantalla (Cambio #16); que falte no bloquea el cierre.
     - Las facturas que siguen sin visitar salen de la carga (quedan "Sin
       carga asignada") y se anotan en carga.facturas_liberadas.
     """
@@ -400,13 +400,6 @@ def cerrar_carga(
             forma_pago=codigo,
             defaults={"segun_sistema": segun_sistema, "recibido": recibido},
         )
-
-    ids_recibidos = {int(i) for i in devoluciones_recibidas}
-    for detalle in resumen["devoluciones"]:
-        marcado = detalle.id in ids_recibidos
-        if detalle.recibido_bodega != marcado:
-            detalle.recibido_bodega = marcado
-            detalle.save(update_fields=["recibido_bodega"])
 
     liberadas = [f for f in resumen["sin_visitar"] if not f.liberada]
     if liberadas:

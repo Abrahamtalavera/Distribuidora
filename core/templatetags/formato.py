@@ -56,3 +56,21 @@ def cantidad(valor):
         return ""
     texto = f"{Decimal(valor):,.3f}".rstrip("0").rstrip(".")
     return texto or "0"
+
+
+@register.filter
+def cantidad_signo(valor):
+    """Como cantidad, pero con signo + cuando es positiva (para diferencias)."""
+    if valor is None or valor == "":
+        return ""
+    valor = Decimal(valor)
+    return f"{'+' if valor > 0 else ''}{cantidad(valor)}"
+
+
+@register.filter
+def plano_cant(valor):
+    """Cantidad con punto decimal y sin separador de miles, para data-atributos."""
+    if valor is None or valor == "":
+        return ""
+    texto = f"{Decimal(valor):.3f}".rstrip("0").rstrip(".")
+    return texto or "0"

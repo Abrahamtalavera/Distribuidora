@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block titulo %}Bodega{% endblock %} — Sol Maya</title>
+<style>
+  :root {
+    --primary:#417690; --primary-dark:#2b4f5e; --accent-light:#e8f1f5; --border:#ddd; --text:#2c2c2c; --muted:#757575;
+    --ok:#2e7d32; --ok-bg:#e8f5e9; --warn:#b26a00; --warn-bg:#fff3e0; --pend:#757575; --pend-bg:#eee; --danger:#a94442; --danger-bg:#fdecea;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif; background:#eef0f1; color:var(--text); padding:16px 12px 40px; }
+  .desk { max-width:1000px; margin:0 auto; background:#fff; border:1px solid var(--border); }
+  .desk.angosto { max-width:420px; margin-top:40px; }
+  .desk-head { background:var(--primary); color:#fff; padding:14px 20px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+  .desk-head h1 { margin:0; font-size:18px; font-weight:600; }
+  .desk-head .sub { font-size:12px; opacity:.9; margin-top:3px; }
+  .usuario { font-size:12px; display:flex; align-items:center; gap:8px; }
+  .usuario button { background:rgba(255,255,255,.2); color:#fff; border:none; border-radius:6px; padding:5px 10px; font-size:12px; cursor:pointer; font-family:inherit; }
+  .pill { padding:5px 12px; border-radius:14px; font-size:12px; font-weight:700; background:#f7c948; color:#4a3b00; white-space:nowrap; }
+  .pill.ok { background:#c8e6c9; color:#1b5e20; }
+  .pill.dif { background:#ffcdd2; color:#7f1d1d; }
+  .desk-body { padding:16px 20px 20px; }
+  .seccion { border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:12px; background:#fff; }
+  .seccion h3 { font-size:13px; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); margin:0 0 10px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { text-align:left; font-size:11px; text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--border); padding:6px 8px; }
+  td { padding:7px 8px; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
+  td.r, th.r { text-align:right; white-space:nowrap; }
+  tr.tot td { font-weight:700; border-top:2px solid var(--border); border-bottom:none; }
+  .scroll { overflow-x:auto; }
+  .badge { display:inline-block; font-size:11px; font-weight:600; padding:3px 8px; border-radius:10px; white-space:nowrap; }
+  .badge-pendiente { background:var(--pend-bg); color:var(--pend); }
+  .badge-completa { background:var(--ok-bg); color:var(--ok); }
+  .badge-noentregada { background:var(--danger-bg); color:var(--danger); }
+  .in-num { width:92px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:14px; text-align:right; font-family:inherit; }
+  .dif-ok { color:var(--ok); font-weight:700; } .dif-mal { color:var(--danger); font-weight:700; }
+  .detalle { font-size:12px; color:var(--muted); }
+  .aviso { padding:9px 12px; border-radius:8px; font-size:13px; margin-bottom:12px; }
+  .aviso.warn { background:var(--warn-bg); color:#6b4f00; }
+  .aviso.ok { background:var(--ok-bg); color:var(--ok); }
+  .aviso.error { background:var(--danger-bg); color:var(--danger); }
+  textarea, .campo input { width:100%; padding:9px 10px; border:1px solid var(--border); border-radius:6px; font-size:14px; font-family:inherit; }
+  textarea { resize:vertical; }
+  .campo { margin-bottom:12px; }
+  .campo label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .acciones { display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; margin-top:14px; }
+  .btn-sec { background:#fff; color:var(--primary); border:1px solid var(--primary); padding:10px 16px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; text-decoration:none; display:inline-block; }
+  .btn-pri { background:var(--ok); color:#fff; border:none; padding:11px 22px; border-radius:8px; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .btn-pri.ancho { width:100%; background:var(--primary); }
+  a.fila { color:inherit; text-decoration:none; font-weight:700; color:var(--primary-dark); }
+  tr.clic:hover td { background:#f7fafb; }
+  .oculto { display:none !important; }
+</style>
+</head>
+<body>
+{% block cuerpo %}{% endblock %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

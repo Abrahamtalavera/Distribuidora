@@ -1,0 +1,5 @@
+<form class="usuario" method="post" action="{% url 'bodega_salir' %}">
+  {% csrf_token %}
+  <span>Usuario: {{ request.user.get_username }}</span>
+  <button type="submit">Salir</button>
+</form>

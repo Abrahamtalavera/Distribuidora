@@ -5,7 +5,7 @@
 
 from django.urls import path
 
-from core import views_cierre, views_entregas
+from core import views_bodega, views_cierre, views_entregas
 
 urlpatterns = [
     path("entregas/acceso/", views_entregas.entregas_acceso_view, name="entregas_acceso"),
@@ -28,5 +28,14 @@ urlpatterns = [
         "entregas/carga/<int:carga_id>/salir/",
         views_entregas.entregas_salir_view,
         name="entregas_salir",
+    ),
+    # Cambio #16: recepción de devoluciones en bodega de producto terminado.
+    path("bodega/", views_bodega.bodega_lista_view, name="bodega_lista"),
+    path("bodega/acceso/", views_bodega.BodegaLoginView.as_view(), name="bodega_acceso"),
+    path("bodega/salir/", views_bodega.bodega_salir_view, name="bodega_salir"),
+    path(
+        "bodega/carga/<int:carga_id>/",
+        views_bodega.bodega_recepcion_view,
+        name="bodega_recepcion",
     ),
 ]

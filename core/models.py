@@ -163,10 +163,32 @@ class Carga(models.Model):
         ),
     )
 
+    # --- Cambio #16: recepción de devoluciones en bodega de producto terminado
+    devoluciones_recibidas_en = models.DateTimeField(
+        null=True, blank=True, editable=False, verbose_name="Devoluciones recibidas el"
+    )
+    devoluciones_recibidas_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        editable=False,
+        on_delete=models.SET_NULL,
+        related_name="cargas_recibidas_en_bodega",
+        verbose_name="Devoluciones recibidas por",
+    )
+    observaciones_bodega = models.TextField(
+        blank=True,
+        verbose_name="Observaciones de bodega",
+        help_text="Obligatoria cuando lo recibido en bodega no coincide con lo reportado.",
+    )
+
     class Meta:
         verbose_name = "Carga"
         verbose_name_plural = "Cargas"
         ordering = ["-fecha_planeada", "-id"]
+        permissions = [
+            ("recibir_devoluciones", "Puede recibir devoluciones en bodega"),
+        ]
 
     def __str__(self):
         return f"Carga #{self.id} - {self.fecha_planeada}"
@@ -480,15 +502,43 @@ class EntregaDetalle(models.Model):
         related_name="lineas_entrega",
         help_text="Motivo de devolución específico de este producto, si aplica.",
     )
-    recibido_bodega = models.BooleanField(
-        default=False,
-        verbose_name="Recibido en bodega",
-        help_text="Se marca en el cierre de la carga cuando bodega recibe lo devuelto (Cambio #14).",
+    # Cambio #16: lo que bodega de producto terminado recibió de esta
+    # devolución, separado por destino. Vacío (None) = todavía no se ha
+    # recibido. Lo recibido es la suma de los dos.
+    recibido_inventario = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        null=True,
+        blank=True,
+        verbose_name="Recibido a inventario",
+    )
+    recibido_merma = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        null=True,
+        blank=True,
+        verbose_name="Recibido como merma",
     )
 
     class Meta:
         verbose_name = "Línea de entrega"
         verbose_name_plural = "Líneas de entrega"
+
+    @property
+    def recepcion_registrada(self):
+        return self.recibido_inventario is not None or self.recibido_merma is not None
+
+    @property
+    def recibido_total(self):
+        """Lo recibido en bodega (inventario + merma), o None si aún no se recibe."""
+        if not self.recepcion_registrada:
+            return None
+        return (self.recibido_inventario or 0) + (self.recibido_merma or 0)
+
+    @property
+    def diferencia_recepcion(self):
+        total = self.recibido_total
+        return None if total is None else total - self.cantidad_devuelta
 
 
 class CarteraCobro(models.Model):
