@@ -292,6 +292,28 @@
       </div>
       {% endif %}
 
+      {% if r.no_cargadas %}
+      <div class="seccion">
+        <h3>No cargadas (liberadas al salir a ruta)</h3>
+        <div class="scroll">
+          <table>
+            <tbody>
+              {% for f in r.no_cargadas %}
+              <tr>
+                <td><b>{{ f.numero_factura }}</b></td>
+                <td>{{ f.cliente.nombre }}</td>
+                <td>{% if f.modalidad_pago.codigo == "CONTADO" %}<span class="badge badge-contado">Contado</span>{% else %}<span class="badge badge-credito">{{ f.modalidad_pago.nombre }}</span>{% endif %}</td>
+                <td class="r">C$ {{ f.total|moneda }}</td>
+                <td>{% if f.carga_id %}Ahora en Carga #{{ f.carga_id }}{% else %}Sin carga asignada{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="detalle" style="margin-top:6px">No se marcaron como cargadas y salieron de esta carga{% if carga.salio_a_ruta_en %} al salir a ruta el {{ carga.salio_a_ruta_en|date:"d/m/Y H:i" }}{% endif %}. No cuentan en los totales.</div>
+      </div>
+      {% endif %}
+
       <div class="seccion">
         <h3>Observaciones del cierre</h3>
         {% if carga.observaciones_repartidor %}<div class="detalle" style="margin-bottom:6px">Repartidor: "{{ carga.observaciones_repartidor }}"</div>{% endif %}

@@ -93,6 +93,7 @@
   }
   .mensaje.success { background: var(--ok-bg); color: var(--ok); }
   .mensaje.error { background: #fdecea; color: var(--danger); }
+  .mensaje.warning { background: var(--warn-bg); color: #6b4f00; }
   .factura-card {
     background: #fff;
     border: 1px solid var(--border);
@@ -125,6 +126,25 @@
   .badge-parcial { background: var(--warn-bg); color: var(--warn); }
   .badge-completa { background: var(--ok-bg); color: var(--ok); }
   .badge-noentregada { background: #fdecea; color: var(--danger); }
+  /* Cambio #17: estado "Cargada" y buscador */
+  .badge-porcargar { background: var(--pend-bg); color: var(--pend); }
+  .badge-cargada { background: #e3f2fd; color: #1565c0; }
+  .estado-carga { margin-left: auto; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 10px; background: #f7c948; color: #4a3b00; }
+  .estado-carga.ruta { background: #c8e6c9; color: #1b5e20; }
+  .factura-card.cargada { border-color: #90caf9; background: #f7fbff; }
+  .buscador { position: relative; margin-bottom: 10px; }
+  .buscador input { width: 100%; padding: 11px 36px 11px 38px; border: 1px solid var(--border); border-radius: 10px; font-size: 15px; font-family: inherit; }
+  .buscador .lupa { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 15px; }
+  .buscador .limpiar { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); border: none; background: none; font-size: 20px; color: var(--muted); cursor: pointer; }
+  .chips { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+  .chips button { border: 1px solid var(--border); background: #fff; border-radius: 14px; padding: 5px 11px; font-size: 12px; cursor: pointer; font-family: inherit; }
+  .chips button.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .conteo-busqueda { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .form-marcar { margin: 0 0 0 auto; }
+  .btn-marcar { border: 1px solid #1565c0; color: #1565c0; background: #fff; border-radius: 8px; padding: 7px 12px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; }
+  .btn-marcar.quitar { border-color: var(--border); color: var(--muted); font-weight: 600; }
+  .btn-marcar:disabled { opacity: .5; }
+  mark { background: #fff59d; padding: 0 1px; }
   .badge-contado { background: var(--accent-light); color: var(--primary-dark); }
   .badge-credito { background: #f3e5f5; color: #6a1b9a; }
   .fila-bottom {

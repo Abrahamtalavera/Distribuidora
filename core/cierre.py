@@ -290,6 +290,17 @@ def resumen_cierre(carga):
         ],
         "devoluciones": devoluciones,
         "recepcion": recepcion,
+        # Cambio #17: facturas que no se cargaron y salieron de la carga al
+        # tocar "Salir a ruta". No cuentan en los totales de la carga.
+        "no_cargadas": (
+            list(
+                carga.facturas_no_cargadas.select_related("cliente", "modalidad_pago").order_by(
+                    "numero_factura"
+                )
+            )
+            if carga.pk
+            else []
+        ),
         "valor_devuelto": totales["devuelto"],
         "docs_devolucion": len(docs_devolucion),
         "km_recorrido": km_recorrido,
@@ -404,7 +415,11 @@ def cerrar_carga(
     liberadas = [f for f in resumen["sin_visitar"] if not f.liberada]
     if liberadas:
         carga.facturas_liberadas.add(*liberadas)
-        Factura.objects.filter(id__in=[f.id for f in liberadas]).update(carga=None)
+        # Cambio #17: al salir de la carga su mercadería vuelve a bodega, así
+        # que en la próxima carga habrá que marcarla como cargada de nuevo.
+        Factura.objects.filter(id__in=[f.id for f in liberadas]).update(
+            carga=None, cargada_en=None, cargada_por=""
+        )
 
     carga.estado = "CERRADA"
     carga.cerrada_en = timezone.now()

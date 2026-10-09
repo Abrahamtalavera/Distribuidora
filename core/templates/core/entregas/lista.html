@@ -7,20 +7,23 @@
 <header class="app-header">
   <div class="titulo">
     Carga #{{ carga.id }}
+    {% if fase_carga %}<span class="estado-carga">Cargando</span>{% elif carga.estado == "EN_RUTA" %}<span class="estado-carga ruta">En ruta</span>{% endif %}
     {% if not es_staff %}
-      <a class="btn-back" style="margin-left:auto;" href="{% url 'entregas_salir' carga.id %}" title="Salir">&#8594;</a>
+      <a class="btn-back" {% if not fase_carga and carga.estado != "EN_RUTA" %}style="margin-left:auto;"{% endif %} href="{% url 'entregas_salir' carga.id %}" title="Salir">&#8594;</a>
     {% endif %}
   </div>
   <div class="subtitulo">
     {% if carga.ruta %}{{ carga.ruta.nombre }}{% else %}Sin ruta{% endif %}
     · {{ carga.fecha_planeada|date:"d/m/Y" }}
-    · {{ entregadas }} de {{ total_facturas }} facturas visitadas
+    · <span id="contador">{% if fase_carga %}{{ cargadas }} de {{ total_facturas }} facturas cargadas{% else %}{{ entregadas }} de {{ total_facturas }} facturas visitadas{% endif %}</span>
   </div>
-  <div class="progreso-bar"><div class="progreso-fill" style="width:{{ porcentaje }}%"></div></div>
+  <div class="progreso-bar"><div class="progreso-fill" id="progreso" style="width:{{ porcentaje }}%"></div></div>
 </header>
 {% endblock %}
 
 {% block content %}
+<div id="avisoJs"></div>
+
 {% if carga.bloqueada_para_repartidor %}
   {% if carga.esta_cerrada %}
     <div class="aviso ok"><b>Carga cerrada</b>{% if carga.cerrada_en %} el {{ carga.cerrada_en|date:"d/m/Y H:i" }}{% endif %}. Ya no se puede modificar.</div>
@@ -45,40 +48,191 @@
       <div class="kv"><span class="l">Km recorridos</span><span>{{ r.km_recorrido|km }} km</span></div>
     {% endif %}
   </div>
+{% elif fase_carga %}
+  <div class="aviso info">Marca cada factura que subes al camión. Solo las facturas <b>cargadas</b> se podrán entregar.</div>
 {% endif %}
 
-{% for factura in facturas %}
-  {% if puede_capturar %}
-  <a class="factura-card" href="{% url 'entregas_captura' carga.id factura.id %}" style="display:block; text-decoration:none; color:inherit;">
+{% if facturas %}
+<div class="buscador">
+  <span class="lupa">&#128269;</span>
+  <input type="search" id="buscar" placeholder="Buscar por n.º de factura o cliente" autocomplete="off" value="{{ request.GET.q }}">
+  <button type="button" class="limpiar" id="limpiar" title="Borrar" hidden>&times;</button>
+</div>
+<div class="chips" id="chips" data-inicial="{{ request.GET.f|default:'todas' }}">
+  <button type="button" data-f="todas">Todas</button>
+  {% if fase_carga %}
+    <button type="button" data-f="porcargar">Por cargar</button>
+    <button type="button" data-f="cargadas">Cargadas</button>
   {% else %}
-  <div class="factura-card inactiva">
+    <button type="button" data-f="pendientes">Por entregar</button>
+    <button type="button" data-f="entregadas">Entregadas</button>
   {% endif %}
+</div>
+<div class="conteo-busqueda" id="conteoBusqueda"></div>
+{% endif %}
+
+<div id="listaFacturas">
+{% for factura in facturas %}
+  <div class="factura-card{% if factura.esta_cargada %} cargada{% endif %}"
+       data-numero="{{ factura.numero_factura }}" data-cliente="{{ factura.cliente.nombre }}"
+       data-cargada="{% if factura.esta_cargada %}1{% else %}0{% endif %}"
+       data-visitada="{% if factura.resultado != 'SIN_VISITAR' %}1{% else %}0{% endif %}"
+       {% if factura.abrible %}data-href="{% url 'entregas_captura' carga.id factura.id %}"{% endif %}>
+    {% if factura.abrible %}<a href="{% url 'entregas_captura' carga.id factura.id %}" style="display:block; text-decoration:none; color:inherit;">{% endif %}
     <div class="fila-top">
       <div>
-        <div class="numero">{{ factura.numero_factura }}</div>
-        <div class="cliente">{{ factura.cliente.nombre }}</div>
+        <div class="numero" data-texto="{{ factura.numero_factura }}">{{ factura.numero_factura }}</div>
+        <div class="cliente" data-texto="{{ factura.cliente.nombre }}">{{ factura.cliente.nombre }}</div>
         <div class="detalle-muted">{{ factura.cliente.municipio }}</div>
       </div>
       <div class="total">C$ {{ factura.total_fmt }}</div>
     </div>
-    <div class="fila-bottom">
+    {% if factura.abrible %}</a>{% endif %}
+    <div class="fila-bottom" style="justify-content:flex-start; gap:6px; flex-wrap:wrap;">
       {% if factura.modalidad_pago.codigo == "CONTADO" %}
         <span class="badge badge-contado">Contado</span>
       {% else %}
         <span class="badge badge-credito">{{ factura.modalidad_pago.nombre }}</span>
       {% endif %}
-      <span class="badge badge-{{ factura.resultado_css }}">{{ factura.resultado_nombre }}</span>
+      {% if factura.resultado != "SIN_VISITAR" %}
+        <span class="badge badge-{{ factura.resultado_css }}">{{ factura.resultado_nombre }}</span>
+      {% elif factura.esta_cargada %}
+        <span class="badge badge-cargada etiqueta-carga">Cargada</span>
+      {% else %}
+        <span class="badge badge-porcargar etiqueta-carga">{% if fase_carga %}Por cargar{% else %}No cargada{% endif %}</span>
+      {% endif %}
+      {% if puede_marcar and factura.resultado == "SIN_VISITAR" %}
+        {% if not factura.esta_cargada %}
+          <form class="form-marcar" method="post" action="{% url 'entregas_marcar_cargada' carga.id factura.id %}">
+            {% csrf_token %}<input type="hidden" name="accion" value="cargar">
+            <input type="hidden" name="q" class="q-actual"><input type="hidden" name="f" class="f-actual">
+            <button class="btn-marcar" type="submit">Marcar cargada</button>
+          </form>
+        {% elif fase_carga %}
+          <form class="form-marcar" method="post" action="{% url 'entregas_marcar_cargada' carga.id factura.id %}">
+            {% csrf_token %}<input type="hidden" name="accion" value="quitar">
+            <input type="hidden" name="q" class="q-actual"><input type="hidden" name="f" class="f-actual">
+            <button class="btn-marcar quitar" type="submit">Quitar</button>
+          </form>
+        {% endif %}
+      {% endif %}
     </div>
-  {% if puede_capturar %}</a>{% else %}</div>{% endif %}
+  </div>
 {% empty %}
   <p>No hay facturas activas asignadas a esta carga.</p>
 {% endfor %}
+</div>
+<p class="detalle-muted oculto" id="sinResultados" style="text-align:center; padding:20px;"></p>
 {% endblock %}
 
 {% block barra_inferior %}
-{% if not carga.bloqueada_para_repartidor %}
+{% if fase_carga %}
+<div class="barra-inferior">
+  <a class="btn-guardar" style="display:block; text-align:center; text-decoration:none;" href="{% url 'entregas_salir_a_ruta' carga.id %}">Salir a ruta</a>
+</div>
+{% elif not carga.bloqueada_para_repartidor %}
 <div class="barra-inferior">
   <a class="btn-guardar" style="display:block; text-align:center; text-decoration:none;" href="{% url 'entregas_terminar' carga.id %}">Terminé mi ruta</a>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  "use strict";
+  var FASE_CARGA = {% if fase_carga %}true{% else %}false{% endif %};
+  var input = document.getElementById("buscar");
+  if (!input) return;
+  var limpiar = document.getElementById("limpiar");
+  var chips = document.getElementById("chips");
+  var conteo = document.getElementById("conteoBusqueda");
+  var sinRes = document.getElementById("sinResultados");
+  var aviso = document.getElementById("avisoJs");
+  var tarjetas = Array.prototype.slice.call(document.querySelectorAll("#listaFacturas .factura-card"));
+  var filtro = chips.dataset.inicial || "todas";
+
+  // Búsqueda sin importar mayúsculas ni tildes.
+  function norm(s) { return (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(); }
+  function escapar(s) { return s.replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function resaltar(el, q) {
+    var txt = el.dataset.texto;
+    var i = q ? norm(txt).indexOf(q) : -1;
+    el.innerHTML = i < 0 ? escapar(txt)
+      : escapar(txt.slice(0, i)) + "<mark>" + escapar(txt.slice(i, i + q.length)) + "</mark>" + escapar(txt.slice(i + q.length));
+  }
+  function pasaFiltro(t) {
+    if (filtro === "porcargar") return t.dataset.cargada !== "1";
+    if (filtro === "cargadas") return t.dataset.cargada === "1";
+    if (filtro === "pendientes") return t.dataset.visitada !== "1";
+    if (filtro === "entregadas") return t.dataset.visitada === "1";
+    return true;
+  }
+  function aplicar() {
+    var q = norm(input.value.trim());
+    limpiar.hidden = !q;
+    var visibles = 0;
+    tarjetas.forEach(function (t) {
+      var ok = pasaFiltro(t) && (!q || norm(t.dataset.numero).indexOf(q) >= 0 || norm(t.dataset.cliente).indexOf(q) >= 0);
+      t.classList.toggle("oculto", !ok);
+      if (ok) visibles++;
+      t.querySelectorAll("[data-texto]").forEach(function (el) { resaltar(el, q); });
+    });
+    chips.querySelectorAll("button").forEach(function (b) { b.classList.toggle("on", b.dataset.f === filtro); });
+    conteo.textContent = (q || filtro !== "todas") ? visibles + " de " + tarjetas.length + " facturas" : "";
+    var texto = input.value.trim();
+    sinRes.textContent = visibles ? "" : !q ? "No hay facturas en este grupo."
+      : filtro === "todas" ? 'No hay facturas que coincidan con "' + texto + '".'
+      : 'Ninguna factura de este grupo coincide con "' + texto + '". Toca "Todas" para buscar en toda la carga.';
+    sinRes.classList.toggle("oculto", visibles > 0);
+    document.querySelectorAll(".q-actual").forEach(function (h) { h.value = input.value.trim(); });
+    document.querySelectorAll(".f-actual").forEach(function (h) { h.value = filtro; });
+  }
+  input.addEventListener("input", aplicar);
+  limpiar.addEventListener("click", function () { input.value = ""; aplicar(); input.focus(); });
+  chips.addEventListener("click", function (e) { var b = e.target.closest("button"); if (b) { filtro = b.dataset.f; aplicar(); } });
+
+  function mostrarAviso(clase, html) {
+    aviso.innerHTML = '<div class="aviso ' + clase + '">' + html + "</div>";
+    window.scrollTo(0, 0);
+  }
+  // Tocar una factura que todavía no se puede abrir explica por qué.
+  tarjetas.forEach(function (t) {
+    if (t.dataset.href) return;
+    t.addEventListener("click", function (e) {
+      if (e.target.closest("form")) return;
+      var num = escapar(t.dataset.numero);
+      if (t.dataset.cargada !== "1") {
+        mostrarAviso("error", "<b>" + num + "</b> no está marcada como cargada. Márcala como cargada antes de poder entregarla.");
+      } else if (FASE_CARGA) {
+        mostrarAviso("info", 'Primero toca <b>Salir a ruta</b>; después podrás registrar la entrega de ' + num + ".");
+      }
+    });
+  });
+
+  // Marcar / quitar sin recargar la página (si falla, el formulario se envía normal).
+  document.querySelectorAll(".form-marcar").forEach(function (form) {
+    form.addEventListener("submit", function (e) {
+      if (!window.fetch) return;
+      e.preventDefault();
+      var boton = form.querySelector("button");
+      boton.disabled = true;
+      fetch(form.action, { method: "POST", body: new FormData(form), headers: { "X-Requested-With": "fetch" }, credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (!d.ok) { mostrarAviso("error", escapar(d.error || "No se pudo guardar.")); boton.disabled = false; return; }
+          // Recarga la lista conservando lo que se estaba buscando.
+          var params = new URLSearchParams();
+          if (input.value.trim()) params.set("q", input.value.trim());
+          if (filtro !== "todas") params.set("f", filtro);
+          var qs = params.toString();
+          window.location.replace(window.location.pathname + (qs ? "?" + qs : ""));
+        })
+        .catch(function () { form.submit(); });
+    });
+  });
+
+  aplicar();
+})();
+</script>
 {% endblock %}

@@ -183,6 +183,17 @@
     </table>
     {% endif %}
 
+    {% if r.no_cargadas %}
+    <h2>No cargadas (liberadas al salir a ruta)</h2>
+    <table>
+      <tbody>
+        {% for f in r.no_cargadas %}
+        <tr><td><b>{{ f.numero_factura }}</b></td><td>{{ f.cliente.nombre }}</td><td>{{ f.modalidad_pago.nombre }}</td><td class="r">C$ {{ f.total|moneda }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
     {% if carga.observaciones_repartidor or carga.observaciones_cierre %}
     <h2>Observaciones</h2>
     {% if carga.observaciones_repartidor %}<div class="nota">Repartidor: {{ carga.observaciones_repartidor }}</div>{% endif %}

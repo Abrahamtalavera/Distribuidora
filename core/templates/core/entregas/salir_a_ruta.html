@@ -1,0 +1,44 @@
+{% extends "core/entregas/base.html" %}
+
+{% block titulo %}Salir a ruta{% endblock %}
+
+{% block header %}
+<header class="app-header">
+  <div class="titulo">
+    <a class="btn-back" href="{% url 'entregas_lista' carga.id %}">&#8592;</a>
+    Salir a ruta
+  </div>
+  <div class="subtitulo">Carga #{{ carga.id }}{% if carga.ruta %} · {{ carga.ruta.nombre }}{% endif %}</div>
+</header>
+{% endblock %}
+
+{% block content %}
+<form method="post" id="form-salir">
+  {% csrf_token %}
+  {% if not cargadas %}
+    <div class="aviso error">Todavía no has marcado ninguna factura como cargada. Marca al menos una antes de salir a ruta.</div>
+  {% elif no_cargadas %}
+    <div class="aviso warn">
+      <b>{{ no_cargadas|length }} factura{{ no_cargadas|length|pluralize:" no fue cargada,s no fueron cargadas" }}.</b>
+      Al salir a ruta se liberará{{ no_cargadas|length|pluralize:"n" }} de esta Carga y quedará{{ no_cargadas|length|pluralize:"n" }} disponible{{ no_cargadas|length|pluralize }} para otra ruta:
+    </div>
+    <div class="seccion">
+      {% for f in no_cargadas %}
+        <div class="kv"><span><b>{{ f.numero_factura }}</b> {{ f.cliente.nombre }}</span><span>C$ {{ f.total_fmt }}</span></div>
+      {% endfor %}
+    </div>
+    <p class="detalle-muted">Saldrás con {{ cargadas }} factura{{ cargadas|pluralize }} cargada{{ cargadas|pluralize }}.</p>
+  {% else %}
+    <div class="aviso ok">Todas las facturas ({{ cargadas }}) están cargadas.</div>
+  {% endif %}
+</form>
+{% endblock %}
+
+{% block barra_inferior %}
+<div class="barra-inferior" style="display:flex; gap:8px;">
+  <a class="btn-secundario" style="flex:1; margin:0;" href="{% url 'entregas_lista' carga.id %}{% if no_cargadas %}?f=porcargar{% endif %}">{% if no_cargadas %}Volver a cargar{% else %}Cancelar{% endif %}</a>
+  {% if cargadas %}
+    <button class="btn-guardar" style="flex:1;{% if no_cargadas %} background:#b26a00;{% endif %}" type="submit" form="form-salir">{% if no_cargadas %}Liberar y salir a ruta{% else %}Salir a ruta{% endif %}</button>
+  {% endif %}
+</div>
+{% endblock %}

@@ -163,6 +163,22 @@ class Carga(models.Model):
         ),
     )
 
+    # --- Cambio #17: salida a ruta ------------------------------------------
+    salio_a_ruta_en = models.DateTimeField(
+        null=True, blank=True, editable=False, verbose_name="Salió a ruta el"
+    )
+    facturas_no_cargadas = models.ManyToManyField(
+        "Factura",
+        blank=True,
+        editable=False,
+        related_name="cargas_que_no_la_cargaron",
+        help_text=(
+            "Facturas que no se marcaron como cargadas y que por eso salieron "
+            "de la carga al tocar 'Salir a ruta' (quedaron 'Sin carga "
+            "asignada'). Se guardan para que el cierre las siga mostrando."
+        ),
+    )
+
     # --- Cambio #16: recepción de devoluciones en bodega de producto terminado
     devoluciones_recibidas_en = models.DateTimeField(
         null=True, blank=True, editable=False, verbose_name="Devoluciones recibidas el"
@@ -210,6 +226,11 @@ class Carga(models.Model):
         if not self.codigo_acceso:
             self.codigo_acceso = self.generar_codigo_acceso_unico()
         super().save(*args, **kwargs)
+
+    @property
+    def en_fase_de_carga(self):
+        """Cambio #17: antes de 'Salir a ruta' el repartidor carga el camión."""
+        return self.estado == "PLANEADA"
 
     @property
     def bloqueada_para_repartidor(self):
@@ -338,6 +359,15 @@ class Factura(models.Model):
         help_text="Carga (salida de reparto) a la que fue asignada esta factura",
     )
     creado_en = models.DateTimeField(auto_now_add=True)
+    # Cambio #17: el repartidor marca la factura como "Cargada" cuando sube
+    # su mercadería al camión, antes de salir a ruta. Solo una factura
+    # cargada se puede entregar. Se borra cuando la factura sale de su carga.
+    cargada_en = models.DateTimeField(
+        null=True, blank=True, editable=False, verbose_name="Cargada el"
+    )
+    cargada_por = models.CharField(
+        max_length=150, blank=True, editable=False, verbose_name="Cargada por"
+    )
 
     class Meta:
         verbose_name_plural = "Facturas"
@@ -345,6 +375,10 @@ class Factura(models.Model):
 
     def __str__(self):
         return self.numero_factura
+
+    @property
+    def esta_cargada(self):
+        return self.cargada_en is not None
 
 
 class FacturaDetalle(models.Model):

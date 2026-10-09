@@ -11,8 +11,10 @@ import secrets
 from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_http_methods
+from django.urls import reverse
+from django.views.decorators.http import require_http_methods, require_POST
 
 from core.entregas import (
     MAX_PAGOS,
@@ -22,6 +24,14 @@ from core.entregas import (
     valor_unitario,
 )
 from core.cierre import anotar_resultado, resumen_cierre
+from core.salida import (
+    SalidaError,
+    descripcion_quien,
+    facturas_por_cargar,
+    marcar_cargada,
+    quitar_cargada,
+    salir_a_ruta,
+)
 from core.models import Carga, CarteraCobro, Factura, MotivoDevolucion, Pago
 
 SESSION_KEY_CARGA = "entrega_carga_id"
@@ -108,12 +118,23 @@ def entregas_lista_view(request, carga_id):
     es_staff = request.user.is_authenticated and request.user.is_staff
     total_facturas = len(facturas)
     entregadas = sum(1 for f in facturas if f.resultado != "SIN_VISITAR")
-    porcentaje = round((entregadas / total_facturas) * 100) if total_facturas else 0
+    cargadas = sum(1 for f in facturas if f.esta_cargada)
+    fase_carga = carga.en_fase_de_carga
+    if fase_carga:
+        porcentaje = round((cargadas / total_facturas) * 100) if total_facturas else 0
+    else:
+        porcentaje = round((entregadas / total_facturas) * 100) if total_facturas else 0
     # El repartidor no puede abrir facturas con la ruta terminada o la carga
     # cerrada; oficina sí puede corregir mientras no esté cerrada.
     puede_capturar = not carga.bloqueada_para_repartidor or (
         es_staff and not carga.esta_cerrada
     )
+    # Cambio #17: solo se entregan facturas cargadas, y solo después de
+    # "Salir a ruta". Se puede marcar como cargada mientras la carga esté
+    # Planeada o En ruta; quitar la marca, solo antes de salir.
+    puede_marcar = carga.estado in ("PLANEADA", "EN_RUTA")
+    for factura in facturas:
+        factura.abrible = puede_capturar and not fase_carga and factura.esta_cargada
 
     return render(
         request,
@@ -123,6 +144,9 @@ def entregas_lista_view(request, carga_id):
             "facturas": facturas,
             "total_facturas": total_facturas,
             "entregadas": entregadas,
+            "cargadas": cargadas,
+            "fase_carga": fase_carga,
+            "puede_marcar": puede_marcar,
             "porcentaje": porcentaje,
             "es_staff": es_staff,
             "puede_capturar": puede_capturar,
@@ -157,6 +181,20 @@ def entregas_captura_view(request, carga_id, factura_id):
         messages.error(
             request,
             "Ya marcaste la ruta como terminada. Si falta corregir algo, pídelo en oficina.",
+        )
+        return redirect("entregas_lista", carga_id=carga.id)
+    # Cambio #17: primero salir a ruta, y solo facturas cargadas.
+    if carga.en_fase_de_carga:
+        messages.error(
+            request,
+            "Primero toca \"Salir a ruta\"; después podrás registrar las entregas.",
+        )
+        return redirect("entregas_lista", carga_id=carga.id)
+    if not factura.esta_cargada:
+        messages.error(
+            request,
+            f"{factura.numero_factura} no está marcada como cargada. "
+            "Márcala como cargada antes de poder entregarla.",
         )
         return redirect("entregas_lista", carga_id=carga.id)
 
@@ -255,4 +293,92 @@ def entregas_captura_view(request, carga_id, factura_id):
             "formas_pago": Pago.FORMA_CHOICES,
             "max_pagos": MAX_PAGOS,
         },
+    )
+
+
+# --- Cambio #17: marcar facturas como cargadas y salir a ruta ---------------
+
+
+def _volver_a_lista(request, carga):
+    """Regresa a la lista conservando lo que se estaba buscando."""
+    url = reverse("entregas_lista", args=[carga.id])
+    q = request.POST.get("q", "").strip()
+    f = request.POST.get("f", "").strip()
+    partes = []
+    if q:
+        from urllib.parse import quote
+
+        partes.append(f"q={quote(q)}")
+    if f:
+        partes.append(f"f={f}")
+    return redirect(url + ("?" + "&".join(partes) if partes else ""))
+
+
+@require_POST
+def entregas_marcar_cargada_view(request, carga_id, factura_id):
+    carga = _carga_autorizada(request, carga_id)
+    if carga is None:
+        return redirect("entregas_acceso")
+    factura = get_object_or_404(Factura, pk=factura_id, carga=carga)
+    accion = request.POST.get("accion", "cargar")
+    error = None
+    try:
+        if accion == "quitar":
+            quitar_cargada(factura, carga=carga)
+        else:
+            marcar_cargada(factura, carga=carga, quien=descripcion_quien(request, carga))
+    except SalidaError as exc:
+        error = str(exc)
+
+    if request.headers.get("x-requested-with") == "fetch":
+        activas = carga.facturas.filter(estado_factura="ACTIVA")
+        return JsonResponse(
+            {
+                "ok": error is None,
+                "error": error,
+                "cargada": factura.esta_cargada,
+                "cargadas": activas.filter(cargada_en__isnull=False).count(),
+                "total": activas.count(),
+            },
+            status=200 if error is None else 400,
+        )
+    if error:
+        messages.error(request, error)
+    return _volver_a_lista(request, carga)
+
+
+@require_http_methods(["GET", "POST"])
+def entregas_salir_a_ruta_view(request, carga_id):
+    carga = _carga_autorizada(request, carga_id)
+    if carga is None:
+        return redirect("entregas_acceso")
+    if not carga.en_fase_de_carga:
+        return redirect("entregas_lista", carga_id=carga.id)
+
+    if request.method == "POST":
+        try:
+            liberadas = salir_a_ruta(carga)
+        except SalidaError as exc:
+            messages.error(request, str(exc))
+            return redirect("entregas_lista", carga_id=carga.id)
+        if liberadas:
+            messages.warning(
+                request,
+                f"Saliste a ruta. Se liberaron {len(liberadas)} factura"
+                f"{'s' if len(liberadas) != 1 else ''} para otra ruta: "
+                + ", ".join(f.numero_factura for f in liberadas)
+                + ".",
+            )
+        else:
+            messages.success(request, "Saliste a ruta.")
+        return redirect("entregas_lista", carga_id=carga.id)
+
+    no_cargadas = facturas_por_cargar(carga)
+    for f in no_cargadas:
+        f.total_fmt = _moneda(f.total)
+    cargadas = carga.facturas.filter(estado_factura="ACTIVA", cargada_en__isnull=False).count()
+    return render(
+        request,
+        "core/entregas/salir_a_ruta.html",
+        {"carga": carga, "no_cargadas": no_cargadas, "cargadas": cargadas},
     )

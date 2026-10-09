@@ -19,6 +19,17 @@ urlpatterns = [
         views_entregas.entregas_captura_view,
         name="entregas_captura",
     ),
+    # Cambio #17: marcar facturas como cargadas y salir a ruta.
+    path(
+        "entregas/carga/<int:carga_id>/factura/<int:factura_id>/cargar/",
+        views_entregas.entregas_marcar_cargada_view,
+        name="entregas_marcar_cargada",
+    ),
+    path(
+        "entregas/carga/<int:carga_id>/salir-a-ruta/",
+        views_entregas.entregas_salir_a_ruta_view,
+        name="entregas_salir_a_ruta",
+    ),
     path(
         "entregas/carga/<int:carga_id>/terminar/",
         views_cierre.entregas_terminar_view,

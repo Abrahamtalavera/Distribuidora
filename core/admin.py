@@ -68,10 +68,12 @@ class FacturaAdmin(admin.ModelAdmin):
         "modalidad_pago",
         "total",
         "estado_entrega",
+        "cargada",
         "estado_factura",
         "carga",
     )
     list_editable = ("fecha_sugerida_entrega",)
+    readonly_fields = ("cargada_en", "cargada_por")
     list_filter = (
         "estado_entrega",
         "estado_factura",
@@ -89,6 +91,18 @@ class FacturaAdmin(admin.ModelAdmin):
 
     def get_changelist(self, request, **kwargs):
         return FacturaChangeList
+
+    @admin.display(description="Cargada", boolean=True, ordering="cargada_en")
+    def cargada(self, obj):
+        return obj.esta_cargada
+
+    def save_model(self, request, obj, form, change):
+        # Cambio #17: si oficina mueve la factura a otra carga (o la saca),
+        # su mercadería hay que volver a cargarla.
+        if change and "carga" in form.changed_data:
+            obj.cargada_en = None
+            obj.cargada_por = ""
+        super().save_model(request, obj, form, change)
 
     @admin.display(description="Sucursal", ordering="cliente__sucursal")
     def sucursal(self, obj):
@@ -208,7 +222,8 @@ class FacturaAdmin(admin.ModelAdmin):
                     km_inicial=form.cleaned_data["km_inicial"],
                     observaciones=form.cleaned_data["observaciones"],
                 )
-                actualizadas = queryset.update(carga=carga)
+                # Cambio #17: en la carga nueva hay que volver a cargarlas.
+                actualizadas = queryset.update(carga=carga, cargada_en=None, cargada_por="")
                 self.message_user(
                     request,
                     f"Carga #{carga.id} creada con {actualizadas} factura(s) asignada(s).",
@@ -274,7 +289,7 @@ class FacturaEnCargaInline(admin.TabularInline):
     model = models.Factura
     fk_name = "carga"
     extra = 0
-    fields = ("numero_factura", "cliente", "total", "estado_entrega")
+    fields = ("numero_factura", "cliente", "total", "estado_entrega", "cargada_en")
     readonly_fields = fields
     can_delete = False
     show_change_link = True
@@ -306,6 +321,7 @@ class CargaAdmin(admin.ModelAdmin):
         "devoluciones_recibidas_en",
         "devoluciones_recibidas_por",
         "observaciones_bodega",
+        "salio_a_ruta_en",
     )
     inlines = [FacturaEnCargaInline]
     change_form_template = "admin/core/carga/change_form.html"
