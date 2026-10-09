@@ -13,7 +13,9 @@ class AgruparEnCargaForm(forms.Form):
 
     fecha_planeada = forms.DateField(
         label="Fecha planeada de entrega",
-        widget=forms.DateInput(attrs={"type": "date"}),
+        # El campo de fecha del navegador solo acepta AAAA-MM-DD; sin este
+        # formato, con el idioma en español la fecha sugerida salía vacía.
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
     )
     ruta = forms.ModelChoiceField(
         queryset=models.Ruta.objects.filter(activo=True),

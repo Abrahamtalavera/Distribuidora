@@ -1,4 +1,4 @@
-{% load static %}
+{% load static formato %}
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -250,6 +250,7 @@
           <th>Modalidad</th>
           <th>Estado entrega</th>
           <th class="num">Total</th>
+          {% if pide_paquetes %}<th class="num">Paquetes</th><th class="num">Costo</th>{% endif %}
         </tr>
       </thead>
       <tbody>
@@ -262,10 +263,22 @@
           <td>{{ factura.modalidad_pago|default:"—" }}</td>
           <td>{{ factura.get_estado_entrega_display }}</td>
           <td class="num">C$ {{ factura.total_fmt }}</td>
+          {% if pide_paquetes %}
+          <td class="num">{% if factura.paquetes is not None %}{{ factura.paquetes }}{% else %}—{% endif %}</td>
+          <td class="num">{% if factura.costo_flete is not None %}C$ {{ factura.costo_flete|moneda }}{% else %}—{% endif %}</td>
+          {% endif %}
         </tr>
         {% empty %}
-        <tr><td colspan="7">Esta carga todavía no tiene facturas asignadas.</td></tr>
+        <tr><td colspan="9">Esta carga todavía no tiene facturas asignadas.</td></tr>
         {% endfor %}
+        {% if pide_paquetes and facturas %}
+        <tr>
+          <td colspan="6" style="font-weight:700;border-top:2px solid #1a1a1a;">Total</td>
+          <td class="num" style="font-weight:700;border-top:2px solid #1a1a1a;">C$ {{ monto_total_fmt }}</td>
+          <td class="num" style="font-weight:700;border-top:2px solid #1a1a1a;">{{ total_paquetes }}</td>
+          <td class="num" style="font-weight:700;border-top:2px solid #1a1a1a;">C$ {{ total_costo|moneda }}</td>
+        </tr>
+        {% endif %}
       </tbody>
     </table>
 

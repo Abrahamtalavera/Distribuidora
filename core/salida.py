@@ -12,10 +12,11 @@ from django.db import transaction
 from django.utils import timezone
 
 from core.models import Factura
+from core.paquetes import facturas_sin_paquetes_costo
 
 # Campos que se limpian cuando una factura sale de su Carga: su mercadería
 # vuelve a bodega, así que en la próxima Carga hay que cargarla de nuevo.
-SIN_CARGAR = {"cargada_en": None, "cargada_por": ""}
+SIN_CARGAR = {"cargada_en": None, "cargada_por": "", "paquetes": None, "costo_flete": None}
 
 
 class SalidaError(Exception):
@@ -79,6 +80,14 @@ def salir_a_ruta(carga):
     activas = carga.facturas.filter(estado_factura="ACTIVA")
     if not activas.filter(cargada_en__isnull=False).exists():
         raise SalidaError("Marca como cargada al menos una factura antes de salir a ruta.")
+    # Cambio #18: la unidad pide paquetes y costo en cada factura que sale.
+    faltan = facturas_sin_paquetes_costo(carga, solo_cargadas=True)
+    if faltan:
+        raise SalidaError(
+            "Oficina debe escribir paquetes y costo en "
+            + ", ".join(f.numero_factura for f in faltan)
+            + " antes de salir a ruta."
+        )
 
     liberadas = facturas_por_cargar(carga)
     if liberadas:

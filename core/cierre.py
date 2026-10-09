@@ -160,7 +160,14 @@ def resumen_cierre(carga):
         dejo_por_factura[entrega.factura_id] = entrega.get_documento_cliente_display()
 
     filas = []
-    totales = {"facturado": CERO, "entregado": CERO, "devuelto": CERO, "cobrado": CERO}
+    totales = {
+        "facturado": CERO,
+        "entregado": CERO,
+        "devuelto": CERO,
+        "cobrado": CERO,
+        "paquetes": 0,
+        "costo_flete": CERO,
+    }
     conteo = OrderedDict(
         (codigo, {"cantidad": 0, "entregado": CERO, "devuelto": CERO}) for codigo in RESULTADOS
     )
@@ -180,6 +187,9 @@ def resumen_cierre(carga):
                 "entregado": f.valor_entregado,
                 "devuelto": f.valor_devuelto,
                 "cobrado": cobrado,
+                # Cambio #18 (solo se muestran si la unidad los pide).
+                "paquetes": f.paquetes,
+                "costo_flete": f.costo_flete,
                 "pagos": [
                     {
                         "forma": NOMBRE_FORMA.get(p.forma_pago, p.forma_pago),
@@ -195,6 +205,8 @@ def resumen_cierre(carga):
         totales["entregado"] += f.valor_entregado
         totales["devuelto"] += f.valor_devuelto
         totales["cobrado"] += cobrado
+        totales["paquetes"] += f.paquetes or 0
+        totales["costo_flete"] += f.costo_flete or CERO
         c = conteo[f.resultado]
         c["cantidad"] += 1
         c["entregado"] += f.valor_entregado

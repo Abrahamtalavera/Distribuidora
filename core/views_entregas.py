@@ -24,6 +24,7 @@ from core.entregas import (
     valor_unitario,
 )
 from core.cierre import anotar_resultado, resumen_cierre
+from core.paquetes import facturas_sin_paquetes_costo
 from core.salida import (
     SalidaError,
     descripcion_quien,
@@ -146,6 +147,9 @@ def entregas_lista_view(request, carga_id):
             "entregadas": entregadas,
             "cargadas": cargadas,
             "fase_carga": fase_carga,
+            # Cambio #18: el repartidor ve los paquetes (no el costo).
+            "pide_paquetes": carga.pide_paquetes_costo,
+            "total_paquetes": sum(f.paquetes or 0 for f in facturas),
             "puede_marcar": puede_marcar,
             "porcentaje": porcentaje,
             "es_staff": es_staff,
@@ -380,5 +384,10 @@ def entregas_salir_a_ruta_view(request, carga_id):
     return render(
         request,
         "core/entregas/salir_a_ruta.html",
-        {"carga": carga, "no_cargadas": no_cargadas, "cargadas": cargadas},
+        {
+            "carga": carga,
+            "no_cargadas": no_cargadas,
+            "cargadas": cargadas,
+            "sin_paquetes": facturas_sin_paquetes_costo(carga, solo_cargadas=True),
+        },
     )

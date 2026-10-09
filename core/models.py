@@ -1,6 +1,7 @@
 import random
 
 from django.conf import settings
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
 
@@ -68,6 +69,14 @@ class Vehiculo(models.Model):
     placa = models.CharField(max_length=20, unique=True)
     descripcion = models.CharField(max_length=100, blank=True)
     activo = models.BooleanField(default=True)
+    pide_paquetes_costo = models.BooleanField(
+        default=False,
+        verbose_name="Pide paquetes y costo",
+        help_text=(
+            "Al planear una Carga con esta unidad, cada factura debe llevar "
+            "paquetes y costo (Cambio #18)."
+        ),
+    )
 
     class Meta:
         verbose_name_plural = "Vehículos"
@@ -228,6 +237,11 @@ class Carga(models.Model):
         super().save(*args, **kwargs)
 
     @property
+    def pide_paquetes_costo(self):
+        """Cambio #18: la unidad de esta carga pide paquetes y costo por factura."""
+        return bool(self.vehiculo_id and self.vehiculo.pide_paquetes_costo)
+
+    @property
     def en_fase_de_carga(self):
         """Cambio #17: antes de 'Salir a ruta' el repartidor carga el camión."""
         return self.estado == "PLANEADA"
@@ -368,6 +382,18 @@ class Factura(models.Model):
     cargada_por = models.CharField(
         max_length=150, blank=True, editable=False, verbose_name="Cargada por"
     )
+    # Cambio #18: datos que captura el planeador cuando la unidad de la carga
+    # los pide (por ejemplo M000003). Son de la factura dentro de su carga.
+    paquetes = models.PositiveIntegerField(null=True, blank=True, verbose_name="Paquetes")
+    costo_flete = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+        verbose_name="Costo",
+        help_text="Costo de llevar esta factura en la unidad (C$), lo escribe el planeador.",
+    )
 
     class Meta:
         verbose_name_plural = "Facturas"
@@ -379,6 +405,10 @@ class Factura(models.Model):
     @property
     def esta_cargada(self):
         return self.cargada_en is not None
+
+    @property
+    def falta_paquetes_costo(self):
+        return self.paquetes is None or self.costo_flete is None
 
 
 class FacturaDetalle(models.Model):

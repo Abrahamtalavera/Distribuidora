@@ -15,7 +15,9 @@
 {% block content %}
 <form method="post" id="form-salir">
   {% csrf_token %}
-  {% if not cargadas %}
+  {% if sin_paquetes %}
+    <div class="aviso error">Oficina todavía no escribió paquetes y costo en {% for f in sin_paquetes %}<b>{{ f.numero_factura }}</b>{% if not forloop.last %}, {% endif %}{% endfor %}. Pídelo en oficina antes de salir a ruta.</div>
+  {% elif not cargadas %}
     <div class="aviso error">Todavía no has marcado ninguna factura como cargada. Marca al menos una antes de salir a ruta.</div>
   {% elif no_cargadas %}
     <div class="aviso warn">
@@ -37,7 +39,7 @@
 {% block barra_inferior %}
 <div class="barra-inferior" style="display:flex; gap:8px;">
   <a class="btn-secundario" style="flex:1; margin:0;" href="{% url 'entregas_lista' carga.id %}{% if no_cargadas %}?f=porcargar{% endif %}">{% if no_cargadas %}Volver a cargar{% else %}Cancelar{% endif %}</a>
-  {% if cargadas %}
+  {% if cargadas and not sin_paquetes %}
     <button class="btn-guardar" style="flex:1;{% if no_cargadas %} background:#b26a00;{% endif %}" type="submit" form="form-salir">{% if no_cargadas %}Liberar y salir a ruta{% else %}Salir a ruta{% endif %}</button>
   {% endif %}
 </div>

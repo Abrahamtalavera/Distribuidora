@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.contrib import admin, messages
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.admin.views.main import ChangeList
@@ -7,6 +9,7 @@ from django.shortcuts import redirect, render
 
 from core import models
 from core.forms import AgruparEnCargaForm
+from core.paquetes import facturas_sin_paquetes_costo, leer_paquetes_costo
 from core.views import importar_facturas_view, imprimir_carga_view
 from core.views_cierre import cierre_carga_view
 
@@ -69,6 +72,8 @@ class FacturaAdmin(admin.ModelAdmin):
         "total",
         "estado_entrega",
         "cargada",
+        "paquetes",
+        "costo_flete",
         "estado_factura",
         "carga",
     )
@@ -102,6 +107,12 @@ class FacturaAdmin(admin.ModelAdmin):
         if change and "carga" in form.changed_data:
             obj.cargada_en = None
             obj.cargada_por = ""
+            # Cambio #18: paquetes y costo son de la factura en su carga
+            # anterior, salvo que se hayan escrito en este mismo cambio.
+            if "paquetes" not in form.changed_data:
+                obj.paquetes = None
+            if "costo_flete" not in form.changed_data:
+                obj.costo_flete = None
         super().save_model(request, obj, form, change)
 
     @admin.display(description="Sucursal", ordering="cliente__sucursal")
@@ -211,9 +222,16 @@ class FacturaAdmin(admin.ModelAdmin):
         Carga nueva. Muestra primero una pantalla intermedia para capturar los
         datos de la salida (ruta, conductor, unidad, km inicial, etc.).
         """
+        facturas = list(queryset.select_related("cliente").order_by("numero_factura"))
+        escritos, errores = {}, {}
         if "apply" in request.POST:
             form = AgruparEnCargaForm(request.POST)
-            if form.is_valid():
+            valores = {}
+            vehiculo = form.cleaned_data.get("vehiculo") if form.is_valid() else None
+            # Cambio #18: si la unidad lo pide, cada factura lleva paquetes y costo.
+            if vehiculo is not None and vehiculo.pide_paquetes_costo:
+                valores, escritos, errores = leer_paquetes_costo(request.POST, facturas)
+            if form.is_valid() and not errores:
                 carga = models.Carga.objects.create(
                     fecha_planeada=form.cleaned_data["fecha_planeada"],
                     ruta=form.cleaned_data["ruta"],
@@ -223,21 +241,45 @@ class FacturaAdmin(admin.ModelAdmin):
                     observaciones=form.cleaned_data["observaciones"],
                 )
                 # Cambio #17: en la carga nueva hay que volver a cargarlas.
-                actualizadas = queryset.update(carga=carga, cargada_en=None, cargada_por="")
+                # Cambio #18: paquetes y costo son de la factura en ESTA carga.
+                actualizadas = queryset.update(
+                    carga=carga, cargada_en=None, cargada_por="", paquetes=None, costo_flete=None
+                )
+                for factura_id, (paquetes, costo) in valores.items():
+                    models.Factura.objects.filter(pk=factura_id).update(
+                        paquetes=paquetes, costo_flete=costo
+                    )
                 self.message_user(
                     request,
                     f"Carga #{carga.id} creada con {actualizadas} factura(s) asignada(s).",
                     messages.SUCCESS,
                 )
                 return None
+            if errores:
+                vehiculo_placa = form.cleaned_data["vehiculo"].placa
+                messages.error(
+                    request,
+                    f"Falta escribir paquetes y costo en todas las facturas (la unidad "
+                    f"{vehiculo_placa} los pide). Los campos marcados en rojo están vacíos "
+                    "o no son válidos.",
+                )
         else:
             form = AgruparEnCargaForm()
 
+        for f in facturas:
+            f.paq_escrito, f.cos_escrito = escritos.get(f.id, ("", ""))
+            f.errores_paq = errores.get(f.id, set())
         return render(
             request,
             "admin/core/factura/agrupar_en_carga.html",
             {
-                "facturas": queryset,
+                "facturas": facturas,
+                "unidades_con_paquetes": list(
+                    models.Vehiculo.objects.filter(pide_paquetes_costo=True).values_list(
+                        "id", flat=True
+                    )
+                ),
+                "total_facturas_fmt": f"{sum((f.total for f in facturas), Decimal('0')):,.2f}",
                 "form": form,
                 "action_checkbox_name": ACTION_CHECKBOX_NAME,
                 "opts": self.model._meta,
@@ -281,7 +323,8 @@ class ModalidadPagoAdmin(admin.ModelAdmin):
 
 @admin.register(models.Vehiculo)
 class VehiculoAdmin(admin.ModelAdmin):
-    list_display = ("placa", "descripcion", "activo")
+    list_display = ("placa", "descripcion", "activo", "pide_paquetes_costo")
+    list_filter = ("pide_paquetes_costo",)
     search_fields = ("placa",)
 
 
@@ -296,6 +339,14 @@ class FacturaEnCargaInline(admin.TabularInline):
 
     def has_add_permission(self, request, obj=None):
         return False
+
+    # Cambio #18: si la unidad de la carga pide paquetes y costo, se muestran
+    # y se pueden corregir aquí, factura por factura.
+    def get_fields(self, request, obj=None):
+        campos = list(self.fields)
+        if obj is not None and obj.pide_paquetes_costo:
+            campos += ["paquetes", "costo_flete"]
+        return campos
 
 
 @admin.register(models.Carga)
@@ -346,6 +397,23 @@ class CargaAdmin(admin.ModelAdmin):
     @admin.display(description="Facturas")
     def total_facturas(self, obj):
         return obj.facturas.count()
+
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        # Cambio #18: avisar qué facturas no tienen paquetes y costo.
+        if request.method == "GET":
+            carga = models.Carga.objects.filter(pk=object_id).select_related("vehiculo").first()
+            if carga is not None:
+                faltan = facturas_sin_paquetes_costo(carga)
+                if faltan:
+                    messages.warning(
+                        request,
+                        f"Esta Carga usa la unidad {carga.vehiculo.placa}: falta escribir "
+                        f"paquetes y costo en {len(faltan)} factura"
+                        f"{'s' if len(faltan) != 1 else ''} ("
+                        + ", ".join(f.numero_factura for f in faltan)
+                        + "). El repartidor no podrá salir a ruta mientras falten.",
+                    )
+        return super().change_view(request, object_id, form_url, extra_context)
 
     def get_urls(self):
         urls = super().get_urls()

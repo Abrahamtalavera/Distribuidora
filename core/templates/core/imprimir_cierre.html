@@ -72,7 +72,7 @@
       <thead>
         <tr>
           <th>Factura</th><th>Cliente</th><th>Modalidad</th><th>Resultado</th><th>Dejó</th>
-          <th class="r">Facturado</th><th class="r">Entregado</th><th class="r">Devuelto</th><th class="r">Cobrado</th>
+          <th class="r">Facturado</th><th class="r">Entregado</th><th class="r">Devuelto</th><th class="r">Cobrado</th>{% if carga.pide_paquetes_costo %}<th class="r">Paquetes</th><th class="r">Costo</th>{% endif %}
         </tr>
       </thead>
       <tbody>
@@ -87,11 +87,12 @@
           <td class="r">{{ f.entregado|moneda }}</td>
           <td class="r">{{ f.devuelto|moneda }}</td>
           <td class="r">{{ f.cobrado|moneda }}</td>
-        </tr>
+        {% if carga.pide_paquetes_costo %}<td class="r">{% if f.paquetes is not None %}{{ f.paquetes }}{% else %}—{% endif %}</td><td class="r">{% if f.costo_flete is not None %}{{ f.costo_flete|moneda }}{% else %}—{% endif %}</td>{% endif %}
+              </tr>
         {% if f.pagos %}
         <tr class="pagos">
           <td></td>
-          <td colspan="8">
+          <td colspan="{% if carga.pide_paquetes_costo %}10{% else %}8{% endif %}">
             <span class="pg-t">Pagado con:</span>
             {% for p in f.pagos %}<span class="pg"><b>{{ p.forma }}</b> C$ {{ p.monto|moneda }}{% if p.numero %} · {{ p.etiqueta }} <b>{{ p.numero }}</b>{% endif %}</span>{% endfor %}
           </td>
@@ -105,7 +106,7 @@
           <td class="r">C$ {{ r.totales.facturado|moneda }}</td>
           <td class="r">C$ {{ r.totales.entregado|moneda }}</td>
           <td class="r">C$ {{ r.totales.devuelto|moneda }}</td>
-          <td class="r">C$ {{ r.totales.cobrado|moneda }}</td>
+          <td class="r">C$ {{ r.totales.cobrado|moneda }}</td>{% if carga.pide_paquetes_costo %}<td class="r">{{ r.totales.paquetes }}</td><td class="r">C$ {{ r.totales.costo_flete|moneda }}</td>{% endif %}
         </tr>
       </tbody>
     </table>

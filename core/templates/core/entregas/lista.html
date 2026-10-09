@@ -15,6 +15,7 @@
   <div class="subtitulo">
     {% if carga.ruta %}{{ carga.ruta.nombre }}{% else %}Sin ruta{% endif %}
     · {{ carga.fecha_planeada|date:"d/m/Y" }}
+    {% if pide_paquetes %}· {{ total_paquetes }} paquete{{ total_paquetes|pluralize }}{% endif %}
     · <span id="contador">{% if fase_carga %}{{ cargadas }} de {{ total_facturas }} facturas cargadas{% else %}{{ entregadas }} de {{ total_facturas }} facturas visitadas{% endif %}</span>
   </div>
   <div class="progreso-bar"><div class="progreso-fill" id="progreso" style="width:{{ porcentaje }}%"></div></div>
@@ -93,6 +94,9 @@
         <span class="badge badge-contado">Contado</span>
       {% else %}
         <span class="badge badge-credito">{{ factura.modalidad_pago.nombre }}</span>
+      {% endif %}
+      {% if pide_paquetes %}
+        <span class="badge badge-paquetes">{% if factura.paquetes is not None %}{{ factura.paquetes }} paquete{{ factura.paquetes|pluralize }}{% else %}Sin paquetes{% endif %}</span>
       {% endif %}
       {% if factura.resultado != "SIN_VISITAR" %}
         <span class="badge badge-{{ factura.resultado_css }}">{{ factura.resultado_nombre }}</span>

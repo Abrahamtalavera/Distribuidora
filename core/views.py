@@ -68,10 +68,14 @@ def imprimir_carga_view(request, pk):
     )
 
     monto_total = Decimal("0")
+    total_paquetes = 0
+    total_costo = Decimal("0")
     resumen_modalidades = OrderedDict()
     for factura in facturas:
         monto_total += factura.total
         factura.total_fmt = _moneda(factura.total)
+        total_paquetes += factura.paquetes or 0
+        total_costo += factura.costo_flete or Decimal("0")
         nombre_modalidad = (
             factura.modalidad_pago.nombre if factura.modalidad_pago else "Sin modalidad"
         )
@@ -94,5 +98,9 @@ def imprimir_carga_view(request, pk):
             "monto_total": monto_total,
             "monto_total_fmt": _moneda(monto_total),
             "resumen_modalidades": resumen_modalidades,
+            # Cambio #18
+            "pide_paquetes": carga.pide_paquetes_costo,
+            "total_paquetes": total_paquetes,
+            "total_costo": total_costo,
         },
     )

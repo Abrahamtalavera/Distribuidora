@@ -1,24 +1,61 @@
 {% extends "admin/base_site.html" %}
+{% load formato %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  /* Cambio #18: paquetes y costo por factura */
+  .bloque-paq { border: 1px solid #f0c36d; border-radius: 6px; padding: 12px; margin: 14px 0; background: #fffdf3; }
+  .bloque-paq h2 { font-size: 14px; margin: 0 0 6px; }
+  .bloque-paq table { width: 100%; }
+  .bloque-paq td.r, .bloque-paq th.r { text-align: right; white-space: nowrap; }
+  .bloque-paq input { width: 100px; text-align: right; }
+  .bloque-paq input.con-error { border-color: #ba2121; background: #fdecea; }
+  .bloque-paq tfoot td { font-weight: 700; border-top: 2px solid #ccc; }
+  .oculto { display: none !important; }
+</style>
+{% endblock %}
 
 {% block content %}
 <h1>Agrupar facturas en una nueva Carga</h1>
-
-<p>Vas a crear una nueva Carga (identificador de carga consecutivo) y asignarle
-las siguientes {{ facturas|length }} factura(s):</p>
-
-<ul>
-  {% for factura in facturas %}
-    <li>
-      {{ factura.numero_factura }} — {{ factura.cliente }} —
-      {{ factura.get_estado_entrega_display }} — Total: {{ factura.total }}
-    </li>
-  {% endfor %}
-</ul>
 
 <form method="post">
   {% csrf_token %}
 
   {{ form.as_p }}
+
+  <div class="bloque-paq oculto" id="bloquePaquetes">
+    <h2>Paquetes y costo por factura</h2>
+    <p class="help">La unidad elegida pide estos datos. Son obligatorios para crear la Carga.</p>
+    <table>
+      <thead><tr><th>Factura</th><th>Cliente</th><th class="r">Total factura</th><th class="r">Paquetes</th><th class="r">Costo (C$)</th></tr></thead>
+      <tbody id="filasPaquetes">
+        {% for factura in facturas %}
+        <tr>
+          <td>{{ factura.numero_factura }}</td>
+          <td>{{ factura.cliente }}</td>
+          <td class="r">C$ {{ factura.total|moneda }}</td>
+          <td class="r"><input type="number" min="0" step="1" name="paq_{{ factura.pk }}" class="paq{% if 'paq' in factura.errores_paq %} con-error{% endif %}" value="{{ factura.paq_escrito }}"></td>
+          <td class="r"><input type="number" min="0" step="0.01" name="cos_{{ factura.pk }}" class="cos{% if 'cos' in factura.errores_paq %} con-error{% endif %}" value="{{ factura.cos_escrito }}"></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr><td colspan="2">Total ({{ facturas|length }} factura{{ facturas|length|pluralize }})</td><td class="r">C$ {{ total_facturas_fmt }}</td><td class="r" id="totalPaquetes">0</td><td class="r" id="totalCosto">C$ 0.00</td></tr></tfoot>
+    </table>
+  </div>
+
+  <div id="listaSimple">
+    <p>Vas a crear una nueva Carga (identificador de carga consecutivo) y asignarle
+    las siguientes {{ facturas|length }} factura(s):</p>
+    <ul>
+      {% for factura in facturas %}
+        <li>
+          {{ factura.numero_factura }} — {{ factura.cliente }} —
+          {{ factura.get_estado_entrega_display }} — Total: {{ factura.total }}
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
 
   {% for factura in facturas %}
     <input type="hidden" name="{{ action_checkbox_name }}" value="{{ factura.pk }}">
@@ -27,4 +64,34 @@ las siguientes {{ facturas|length }} factura(s):</p>
   <input type="submit" name="apply" value="Crear carga y asignar" class="default">
   <a href="../" class="button cancel-link">Cancelar</a>
 </form>
+
+{{ unidades_con_paquetes|json_script:"unidadesConPaquetes" }}
+<script>
+(function () {
+  "use strict";
+  var conPaquetes = JSON.parse(document.getElementById("unidadesConPaquetes").textContent).map(String);
+  var unidad = document.getElementById("id_vehiculo");
+  var bloque = document.getElementById("bloquePaquetes");
+  var lista = document.getElementById("listaSimple");
+  var filas = document.getElementById("filasPaquetes");
+  function fmt(n) { return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function totales() {
+    var p = 0, c = 0;
+    filas.querySelectorAll(".paq").forEach(function (i) { p += parseInt(i.value || 0, 10) || 0; });
+    filas.querySelectorAll(".cos").forEach(function (i) { c += parseFloat(i.value || 0) || 0; });
+    document.getElementById("totalPaquetes").textContent = p;
+    document.getElementById("totalCosto").textContent = "C$ " + fmt(c);
+  }
+  function cambiarUnidad() {
+    var pide = unidad && conPaquetes.indexOf(unidad.value) >= 0;
+    bloque.classList.toggle("oculto", !pide);
+    lista.classList.toggle("oculto", pide);
+    filas.querySelectorAll("input").forEach(function (i) { i.required = pide; });
+  }
+  if (unidad) unidad.addEventListener("change", cambiarUnidad);
+  filas.addEventListener("input", function (e) { e.target.classList.remove("con-error"); totales(); });
+  cambiarUnidad();
+  totales();
+})();
+</script>
 {% endblock %}
