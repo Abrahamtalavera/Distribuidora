@@ -1,0 +1,4 @@
+<nav class="pestanas">
+  <a href="{% url 'tablero' %}" class="{% if pestana == 'dia' %}activa{% endif %}">Cómo va el día</a>
+  <a href="{% url 'tablero_analisis' %}" class="{% if pestana == 'analisis' %}activa{% endif %}">Análisis del período</a>
+</nav>

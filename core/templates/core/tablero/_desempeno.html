@@ -1,0 +1,28 @@
+{% load formato %}
+<div class="seccion">
+  <h3>{{ titulo }}</h3>
+  {% if filas %}
+    <div class="scroll">
+      <table>
+        <tr>
+          <th>Nombre</th><th class="r">Facturas</th><th>Entregado (C$)</th><th class="r">Devuelto (C$)</th>
+          <th class="r">Con devolución</th><th class="r">Efectividad</th>
+        </tr>
+        {% for f in filas %}
+        <tr>
+          <td><b>{{ f.nombre }}</b></td>
+          <td class="r">{{ f.facturas }}</td>
+          <td>{{ f.entregado|moneda }}<div class="pista"><span style="width:{{ f.barra|stringformat:'.1f' }}%"></span></div></td>
+          <td class="r">{{ f.devuelto|moneda }}</td>
+          <td class="r">{{ f.con_devolucion }}</td>
+          <td class="r">
+            {% if f.efectividad is not None %}
+              <span class="ef {% if f.efectividad >= 95 %}alta{% elif f.efectividad >= 85 %}media{% else %}baja{% endif %}">{{ f.efectividad|stringformat:".1f" }}%</span>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+  {% else %}<div class="vacio">Sin visitas en el período.</div>{% endif %}
+</div>

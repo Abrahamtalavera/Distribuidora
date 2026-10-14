@@ -1,0 +1,8 @@
+<div class="usuario">
+  {% if enlaces_admin %}<a href="{% url 'admin:index' %}">Ir al admin</a>{% endif %}
+  <form method="post" action="{% url 'tablero_salir' %}" style="display:flex;align-items:center;gap:8px;">
+    {% csrf_token %}
+    <span>{{ request.user.get_username }}</span>
+    <button type="submit">Salir</button>
+  </form>
+</div>

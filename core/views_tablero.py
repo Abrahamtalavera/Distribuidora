@@ -67,4 +67,71 @@ def tablero_view(request):
     contexto["dia_anterior"] = dia.fromordinal(dia.toordinal() - 1)
     contexto["dia_siguiente"] = dia.fromordinal(dia.toordinal() + 1)
     contexto["enlaces_admin"] = request.user.is_staff
+    contexto["pestana"] = "dia"
     return render(request, "core/tablero/tablero.html", contexto)
+
+
+# ---------------------------------------------------------------------------
+# Cambio #20: análisis de un período (gráficas de devoluciones y desempeño)
+# ---------------------------------------------------------------------------
+
+MAX_DIAS_ANALISIS = 366
+
+
+def _leer_fecha(texto, por_defecto):
+    try:
+        return date.fromisoformat((texto or "").strip())
+    except ValueError:
+        return por_defecto
+
+
+def _leer_id(texto):
+    texto = (texto or "").strip()
+    return int(texto) if texto.isdigit() else None
+
+
+def _atajos_periodo():
+    hoy = timezone.localdate()
+    inicio_mes = hoy.replace(day=1)
+    fin_mes_ant = inicio_mes.fromordinal(inicio_mes.toordinal() - 1)
+    return [
+        ("Últimos 7 días", hoy.fromordinal(hoy.toordinal() - 6), hoy),
+        ("Últimos 30 días", hoy.fromordinal(hoy.toordinal() - 29), hoy),
+        ("Este mes", inicio_mes, hoy),
+        ("Mes anterior", fin_mes_ant.replace(day=1), fin_mes_ant),
+    ]
+
+
+@tablero_required
+def tablero_analisis_view(request):
+    from core.analisis import periodo_por_defecto, resumen_analisis
+    from core.models import Ruta, Vendedor
+
+    desde_def, hasta_def = periodo_por_defecto()
+    desde = _leer_fecha(request.GET.get("desde"), desde_def)
+    hasta = _leer_fecha(request.GET.get("hasta"), hasta_def)
+    if desde > hasta:
+        desde, hasta = hasta, desde
+    aviso = ""
+    if (hasta - desde).days >= MAX_DIAS_ANALISIS:
+        desde = hasta.fromordinal(hasta.toordinal() - MAX_DIAS_ANALISIS + 1)
+        aviso = f"El período se limitó a {MAX_DIAS_ANALISIS} días."
+    ruta_id = _leer_id(request.GET.get("ruta"))
+    repartidor_id = _leer_id(request.GET.get("repartidor"))
+
+    contexto = resumen_analisis(desde, hasta, ruta_id, repartidor_id)
+    contexto.update(
+        {
+            "desde": desde,
+            "hasta": hasta,
+            "ruta_id": ruta_id,
+            "repartidor_id": repartidor_id,
+            "rutas": Ruta.objects.order_by("nombre"),
+            "repartidores": Vendedor.objects.filter(tipo="REPARTIDOR").order_by("nombre"),
+            "aviso": aviso,
+            "enlaces_admin": request.user.is_staff,
+            "pestana": "analisis",
+            "atajos": _atajos_periodo(),
+        }
+    )
+    return render(request, "core/tablero/analisis.html", contexto)

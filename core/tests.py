@@ -173,3 +173,83 @@ class TableroAccesoTests(TableroBase):
         self.client.force_login(self.usuario("admin2", "Administración", staff=True))
         r = self.client.get(reverse("admin:index"))
         self.assertContains(r, "Abrir tablero")
+
+
+class AnalisisTests(TableroBase):
+    """Cambio #20: análisis de un período."""
+
+    def setUp(self):
+        super().setUp()
+        from core.models import AreaResponsable, MotivoDevolucion, Ruta, Vehiculo, Vendedor
+
+        self.area = AreaResponsable.objects.create(nombre="Área prueba")
+        self.motivo = MotivoDevolucion.objects.create(nombre="Motivo prueba", area_responsable=self.area)
+        self.ruta_a = Ruta.objects.create(nombre="Ruta A")
+        self.ruta_b = Ruta.objects.create(nombre="Ruta B")
+        self.juan = Vendedor.objects.create(nombre="Juan", tipo="REPARTIDOR")
+        self.luis = Vendedor.objects.create(nombre="Luis", tipo="REPARTIDOR")
+        self.camion = Vehiculo.objects.create(placa="M-PRUEBA")
+
+    def visita(self, numero, carga, entregada, devuelta, repartidor=None, motivo=None):
+        f = self.factura(numero, carga=carga)
+        e = Entrega.objects.create(factura=f, carga=carga, tipo_entrega="TOTAL", repartidor=repartidor)
+        EntregaDetalle.objects.create(
+            entrega=e, factura_detalle=f.lineas.first(),
+            cantidad_entregada=Decimal(entregada), cantidad_devuelta=Decimal(devuelta),
+            motivo_devolucion=motivo,
+        )
+        return f
+
+    def test_devoluciones_desempeno_y_filtros(self):
+        from core.analisis import resumen_analisis
+
+        ahora = timezone.now()
+        ca = Carga.objects.create(
+            ruta=self.ruta_a, conductor=self.juan, vehiculo=self.camion, estado="CERRADA",
+            km_inicial=Decimal("1000"), km_final=Decimal("1080"),
+            salio_a_ruta_en=ahora - timedelta(hours=6), ruta_terminada_en=ahora,
+        )
+        cb = Carga.objects.create(ruta=self.ruta_b, conductor=self.luis, estado="EN_RUTA")
+        fa = self.visita("A1", ca, "8", "2", motivo=self.motivo)  # repartidor sale del conductor
+        fa.paquetes, fa.costo_flete = 4, Decimal("200")
+        fa.save()
+        self.visita("B1", cb, "10", "0", repartidor=self.luis)
+
+        r = resumen_analisis(self.hoy, self.hoy)
+        e = r["entregas"]
+        self.assertEqual(e["totales"]["facturas"], 2)
+        self.assertEqual(e["totales"]["entregado"], Decimal("207.00"))  # 92 + 115
+        self.assertEqual(e["totales"]["devuelto"], Decimal("23.00"))
+        self.assertEqual(e["por_motivo"][0]["nombre"], "Motivo prueba")
+        self.assertEqual(e["por_area"][0]["nombre"], "Área prueba")
+        repartidores = {f["nombre"]: f for f in e["por_repartidor"]}
+        self.assertEqual(repartidores["Juan"]["efectividad"], Decimal("80.0"))
+        self.assertEqual(repartidores["Luis"]["efectividad"], Decimal("100.0"))
+        self.assertEqual(e["top_clientes"][0]["valor"], Decimal("23.00"))
+
+        unidades = {u["nombre"]: u for u in r["unidades"]}
+        self.assertEqual(unidades["M-PRUEBA"]["km"], Decimal("80"))
+        self.assertEqual(unidades["M-PRUEBA"]["horas_promedio"], 6.0)
+        self.assertEqual(unidades["M-PRUEBA"]["costo_paquete"], Decimal("50.00"))
+
+        solo_b = resumen_analisis(self.hoy, self.hoy, ruta_id=self.ruta_b.id)["entregas"]
+        self.assertEqual(solo_b["totales"]["facturas"], 1)
+        solo_juan = resumen_analisis(self.hoy, self.hoy, repartidor_id=self.juan.id)["entregas"]
+        self.assertEqual(solo_juan["totales"]["facturas"], 1)
+
+        fuera = resumen_analisis(self.hoy - timedelta(days=10), self.hoy - timedelta(days=5))
+        self.assertEqual(fuera["entregas"]["totales"]["facturas"], 0)
+
+    def test_pantalla_analisis(self):
+        u = User.objects.create_user("sup", password="x")
+        u.groups.add(Group.objects.get(name="Supervisores"))
+        self.client.force_login(u)
+        r = self.client.get(reverse("tablero_analisis"), {"desde": "2026-02-01", "hasta": "2026-01-01", "ruta": "abc"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.context["desde"].isoformat(), "2026-01-01")  # se invierten
+        self.assertIsNone(r.context["ruta_id"])
+        self.assertContains(r, "Devoluciones por motivo")
+
+    def test_vendedor_sin_permiso_no_ve_analisis(self):
+        self.client.force_login(User.objects.create_user("vend", password="x"))
+        self.assertEqual(self.client.get(reverse("tablero_analisis")).status_code, 403)

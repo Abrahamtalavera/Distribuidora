@@ -1,0 +1,175 @@
+{% extends "core/bodega/base.html" %}
+{% load formato %}
+{% block titulo %}Análisis {{ desde|date:"d/m" }}–{{ hasta|date:"d/m/Y" }}{% endblock %}
+{% block estilos %}
+{% include "core/tablero/_estilos.html" %}
+<style>
+  .filtros { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; padding:12px 14px; border:1px solid var(--border); border-radius:10px; background:#fafbfb; margin-bottom:8px; }
+  .filtros label { display:block; font-size:11px; color:var(--muted); text-transform:uppercase; margin-bottom:3px; }
+  .filtros input, .filtros select { padding:7px 8px; border:1px solid var(--border); border-radius:6px; font-size:13px; font-family:inherit; background:#fff; }
+  .filtros button { background:var(--primary); color:#fff; border:none; padding:8px 16px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; }
+  .atajos { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:16px; }
+  .atajos a { font-size:12px; color:var(--primary-dark); background:var(--accent-light); padding:4px 10px; border-radius:12px; text-decoration:none; }
+  .dos { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:800px) { .dos { grid-template-columns:1fr; } }
+  .barras { list-style:none; margin:0; padding:0; }
+  .barras li { padding:6px 0; border-bottom:1px solid #f3f3f3; }
+  .barras li:last-child { border-bottom:none; }
+  .barras .fila { display:flex; justify-content:space-between; gap:10px; font-size:13px; }
+  .barras .fila .nom { flex:1; min-width:0; }
+  .barras .fila .val { font-weight:700; white-space:nowrap; }
+  .barras .sub { font-size:11.5px; color:var(--muted); }
+  .pista { height:8px; background:#f0f2f3; border-radius:4px; margin-top:4px; overflow:hidden; }
+  .pista span { display:block; height:100%; background:var(--primary); border-radius:4px; }
+  .pista.dev span { background:#c0504d; }
+  td .pista { margin-top:3px; min-width:80px; }
+  .vacio { font-size:13px; color:var(--muted); padding:6px 0; }
+  .ef { font-weight:700; }
+  .ef.alta { color:var(--ok); } .ef.media { color:var(--warn); } .ef.baja { color:var(--danger); }
+  .seccion h3 .nota { text-transform:none; letter-spacing:0; font-weight:400; }
+</style>
+{% endblock %}
+
+{% block cuerpo %}
+<div class="desk">
+  <div class="desk-head">
+    <div>
+      <h1>Tablero de operación</h1>
+      <div class="sub">Del {{ desde|date:"d/m/Y" }} al {{ hasta|date:"d/m/Y" }}</div>
+    </div>
+    {% include "core/tablero/_usuario.html" %}
+  </div>
+  {% include "core/tablero/_pestanas.html" %}
+
+  <div class="desk-body">
+    <form class="filtros" method="get">
+      <div><label for="desde">Desde</label><input type="date" id="desde" name="desde" value="{{ desde|date:'Y-m-d' }}"></div>
+      <div><label for="hasta">Hasta</label><input type="date" id="hasta" name="hasta" value="{{ hasta|date:'Y-m-d' }}"></div>
+      <div>
+        <label for="ruta">Ruta</label>
+        <select id="ruta" name="ruta">
+          <option value="">Todas</option>
+          {% for r in rutas %}<option value="{{ r.pk }}" {% if r.pk == ruta_id %}selected{% endif %}>{{ r.nombre }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="repartidor">Repartidor</label>
+        <select id="repartidor" name="repartidor">
+          <option value="">Todos</option>
+          {% for p in repartidores %}<option value="{{ p.pk }}" {% if p.pk == repartidor_id %}selected{% endif %}>{{ p.nombre }}</option>{% endfor %}
+        </select>
+      </div>
+      <button type="submit">Aplicar</button>
+    </form>
+    <div class="atajos">
+      {% for nombre, d, h in atajos %}<a href="?desde={{ d|date:'Y-m-d' }}&hasta={{ h|date:'Y-m-d' }}{% if ruta_id %}&ruta={{ ruta_id }}{% endif %}{% if repartidor_id %}&repartidor={{ repartidor_id }}{% endif %}">{{ nombre }}</a>{% endfor %}
+    </div>
+    {% if aviso %}<div class="aviso warn">{{ aviso }}</div>{% endif %}
+
+    {% with t=entregas.totales %}
+    <div class="grid">
+      <div class="tile"><div class="t">Facturas visitadas</div><div class="n">{{ t.facturas }}</div></div>
+      <div class="tile"><div class="t">Entregado</div><div class="n">C$ {{ t.entregado|moneda }}</div></div>
+      <div class="tile"><div class="t">Devuelto</div><div class="n">C$ {{ t.devuelto|moneda }}</div></div>
+      <div class="tile"><div class="t">Efectividad (valor)</div><div class="n">{% if t.efectividad is not None %}{{ t.efectividad|stringformat:".1f" }}%{% else %}—{% endif %}</div><div class="m">Entregado / (entregado + devuelto)</div></div>
+    </div>
+    {% endwith %}
+
+    {# ---------------- Devoluciones ---------------- #}
+    <div class="dos">
+      <div class="seccion">
+        <h3>Devoluciones por motivo <span class="nota">· C$</span></h3>
+        {% if entregas.por_motivo %}
+          <ul class="barras">
+            {% for m in entregas.por_motivo %}
+              <li>
+                <div class="fila"><span class="nom">{{ m.nombre }}</span><span class="val">{{ m.valor|moneda }}</span></div>
+                <div class="sub">{{ m.area }} · {{ m.lineas }} producto{{ m.lineas|pluralize }} · {{ m.pct|stringformat:".1f" }}% del devuelto</div>
+                <div class="pista dev"><span style="width:{{ m.barra|stringformat:'.1f' }}%"></span></div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}<div class="vacio">Sin devoluciones en el período.</div>{% endif %}
+      </div>
+      <div class="seccion">
+        <h3>Devoluciones por área responsable <span class="nota">· C$</span></h3>
+        {% if entregas.por_area %}
+          <ul class="barras">
+            {% for a in entregas.por_area %}
+              <li>
+                <div class="fila"><span class="nom">{{ a.nombre }}</span><span class="val">{{ a.valor|moneda }}</span></div>
+                <div class="sub">{{ a.pct|stringformat:".1f" }}% del devuelto · {{ a.lineas }} producto{{ a.lineas|pluralize }}</div>
+                <div class="pista dev"><span style="width:{{ a.barra|stringformat:'.1f' }}%"></span></div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}<div class="vacio">Sin devoluciones en el período.</div>{% endif %}
+      </div>
+    </div>
+
+    {# ---------------- Desempeño ---------------- #}
+    {% include "core/tablero/_desempeno.html" with titulo="Desempeño por repartidor" filas=entregas.por_repartidor %}
+    {% include "core/tablero/_desempeno.html" with titulo="Desempeño por ruta" filas=entregas.por_ruta %}
+
+    {# ---------------- Top clientes / productos ---------------- #}
+    <div class="dos">
+      <div class="seccion">
+        <h3>Clientes con más devolución <span class="nota">· top 10, C$</span></h3>
+        {% if entregas.top_clientes %}
+          <ul class="barras">
+            {% for c in entregas.top_clientes %}
+              <li>
+                <div class="fila"><span class="nom">{{ c.nombre }}</span><span class="val">{{ c.valor|moneda }}</span></div>
+                <div class="sub">{{ c.sucursal|default:"—" }} · {{ c.facturas }} factura{{ c.facturas|pluralize }}</div>
+                <div class="pista dev"><span style="width:{{ c.barra|stringformat:'.1f' }}%"></span></div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}<div class="vacio">Sin devoluciones en el período.</div>{% endif %}
+      </div>
+      <div class="seccion">
+        <h3>Productos más devueltos <span class="nota">· top 10, C$</span></h3>
+        {% if entregas.top_productos %}
+          <ul class="barras">
+            {% for p in entregas.top_productos %}
+              <li>
+                <div class="fila"><span class="nom">{{ p.nombre }}</span><span class="val">{{ p.valor|moneda }}</span></div>
+                <div class="sub">{{ p.cantidad|cantidad }} {{ p.unidad }}</div>
+                <div class="pista dev"><span style="width:{{ p.barra|stringformat:'.1f' }}%"></span></div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}<div class="vacio">Sin devoluciones en el período.</div>{% endif %}
+      </div>
+    </div>
+
+    {# ---------------- Unidades ---------------- #}
+    <div class="seccion">
+      <h3>Unidades de transporte <span class="nota">· cargas que salieron a ruta en el período</span></h3>
+      {% if unidades %}
+        <div class="scroll">
+          <table>
+            <tr>
+              <th>Vehículo</th><th class="r">Cargas</th><th>Km recorridos</th><th class="r">Km por carga</th>
+              <th class="r">Horas por ruta</th><th class="r">Paquetes</th><th class="r">Costo flete</th><th class="r">C$ por paquete</th>
+            </tr>
+            {% for u in unidades %}
+            <tr>
+              <td><b>{{ u.nombre }}</b></td>
+              <td class="r">{{ u.cargas }}</td>
+              <td>{{ u.km|km }}<div class="pista"><span style="width:{{ u.barra|stringformat:'.1f' }}%"></span></div></td>
+              <td class="r">{% if u.km_promedio is not None %}{{ u.km_promedio|km }}{% else %}—{% endif %}</td>
+              <td class="r">{% if u.horas_promedio is not None %}{{ u.horas_promedio|stringformat:".1f" }}{% else %}—{% endif %}</td>
+              <td class="r">{{ u.paquetes|default:"—" }}</td>
+              <td class="r">{% if u.costo %}{{ u.costo|moneda }}{% else %}—{% endif %}</td>
+              <td class="r">{% if u.costo_paquete is not None %}{{ u.costo_paquete|moneda }}{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </table>
+        </div>
+        <div class="detalle" style="margin-top:8px;">Km = km final − km inicial de cada carga. Horas = de “Salir a ruta” a “Terminé mi ruta”. Paquetes y costo: los que captura el planeador en las unidades que los piden.</div>
+      {% else %}<div class="vacio">Ninguna carga salió a ruta en el período.</div>{% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
