@@ -1,0 +1,14 @@
+{% extends "admin/index.html" %}
+{% comment %}Cambio #19: acceso directo al tablero de operación desde el inicio del admin.{% endcomment %}
+{% block content %}
+{% if perms.core.ver_tablero %}
+  <div style="margin:0 0 20px;padding:14px 18px;border:1px solid var(--hairline-color);border-left:4px solid var(--primary);border-radius:6px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+    <div>
+      <strong style="font-size:15px;">Tablero de operación</strong>
+      <div style="color:var(--body-quiet-color);font-size:13px;margin-top:3px;">Cómo va el día y alertas que requieren acción.</div>
+    </div>
+    <a href="{% url 'tablero' %}" class="button" style="padding:8px 16px;">Abrir tablero</a>
+  </div>
+{% endif %}
+{{ block.super }}
+{% endblock %}

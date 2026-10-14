@@ -213,6 +213,8 @@ class Carga(models.Model):
         ordering = ["-fecha_planeada", "-id"]
         permissions = [
             ("recibir_devoluciones", "Puede recibir devoluciones en bodega"),
+            # Cambio #19: tablero de operación (Administración y Supervisores).
+            ("ver_tablero", "Puede ver el tablero de operación"),
         ]
 
     def __str__(self):

@@ -524,3 +524,7 @@ class ConsignacionAdmin(admin.ModelAdmin):
     list_display = ("factura", "cliente", "fecha_entrega", "fecha_liquidacion", "estado")
     list_filter = ("estado",)
     inlines = [ConsignacionDetalleInline]
+
+
+# Cambio #19: el inicio del admin muestra el acceso al tablero de operación.
+admin.site.index_template = "admin/index_sol_maya.html"

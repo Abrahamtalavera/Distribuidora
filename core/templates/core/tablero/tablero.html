@@ -1,0 +1,250 @@
+{% extends "core/bodega/base.html" %}
+{% load formato %}
+{% block titulo %}Tablero {{ dia|date:"d/m/Y" }}{% endblock %}
+{% block estilos %}
+<style>
+  .desk { max-width:1180px; }
+  .nav-dia { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .nav-dia a, .nav-dia button { background:rgba(255,255,255,.18); color:#fff; border:none; border-radius:6px; padding:6px 10px; font-size:13px; text-decoration:none; cursor:pointer; font-family:inherit; }
+  .nav-dia input[type=date] { border:none; border-radius:6px; padding:5px 8px; font-size:13px; font-family:inherit; }
+  .barra { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+  .barra h2 { font-size:15px; margin:0; color:var(--primary-dark); }
+  .barra .nota { font-size:12px; color:var(--muted); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px; margin-bottom:18px; }
+  .tile { border:1px solid var(--border); border-radius:10px; padding:12px 14px; background:#fff; }
+  .tile .t { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+  .tile .n { font-size:24px; font-weight:700; margin:4px 0 2px; color:var(--text); }
+  .tile .n small { font-size:13px; font-weight:600; color:var(--muted); }
+  .tile .m { font-size:13px; color:var(--muted); }
+  .tile ul { list-style:none; margin:8px 0 0; padding:8px 0 0; border-top:1px solid #f0f0f0; font-size:12.5px; }
+  .tile li { display:flex; justify-content:space-between; gap:8px; padding:2px 0; }
+  .tile li span:last-child { font-weight:600; white-space:nowrap; }
+  .tile.malo { border-color:#f2b8b5; background:var(--danger-bg); }
+  .tile.bueno .n { color:var(--ok); }
+  .estados { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .badge-ruta { background:var(--warn-bg); color:var(--warn); }
+  .badge-terminada { background:var(--accent-light); color:var(--primary-dark); }
+  details.alerta { border:1px solid var(--border); border-radius:10px; margin-bottom:10px; background:#fff; }
+  details.alerta > summary { list-style:none; cursor:pointer; padding:12px 14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  details.alerta > summary::-webkit-details-marker { display:none; }
+  details.alerta > summary::before { content:"▸"; color:var(--muted); font-size:12px; }
+  details.alerta[open] > summary::before { content:"▾"; }
+  details.alerta .tit { font-weight:700; font-size:14px; flex:1; min-width:200px; }
+  details.alerta .ayuda { font-size:12px; color:var(--muted); padding:0 14px 8px; }
+  details.alerta .cuerpo { padding:0 14px 12px; }
+  details.alerta.error { border-left:4px solid var(--danger); }
+  details.alerta.warn { border-left:4px solid var(--warn); }
+  .cuenta { font-size:13px; font-weight:700; padding:3px 10px; border-radius:12px; }
+  .cuenta.error { background:var(--danger-bg); color:var(--danger); }
+  .cuenta.warn { background:var(--warn-bg); color:var(--warn); }
+  .monto-alerta { font-size:13px; color:var(--muted); font-weight:600; }
+  .mas { font-size:12px; color:var(--muted); margin-top:8px; }
+  .sin-alertas { display:flex; flex-wrap:wrap; gap:8px; margin-top:4px; }
+  .sin-alertas span { font-size:12px; background:var(--ok-bg); color:var(--ok); padding:4px 10px; border-radius:12px; }
+  td a { color:var(--primary-dark); font-weight:700; text-decoration:none; }
+  td a:hover { text-decoration:underline; }
+</style>
+{% endblock %}
+
+{% block cuerpo %}
+<div class="desk">
+  <div class="desk-head">
+    <div>
+      <h1>Tablero de operación</h1>
+      <div class="sub">{% if es_hoy %}Hoy, {% endif %}{{ dia|date:"l d \d\e F \d\e Y" }}</div>
+    </div>
+    <form class="nav-dia" method="get">
+      <a href="?dia={{ dia_anterior|date:'Y-m-d' }}" title="Día anterior">&larr;</a>
+      <input type="date" name="dia" value="{{ dia|date:'Y-m-d' }}" onchange="this.form.submit()" aria-label="Día">
+      <a href="?dia={{ dia_siguiente|date:'Y-m-d' }}" title="Día siguiente">&rarr;</a>
+      {% if not es_hoy %}<a href="?">Hoy</a>{% endif %}
+    </form>
+    <div class="usuario">
+      {% if enlaces_admin %}<a href="{% url 'admin:index' %}" style="color:#fff;font-size:12px;">Ir al admin</a>{% endif %}
+      <form method="post" action="{% url 'tablero_salir' %}" style="display:flex;align-items:center;gap:8px;">
+        {% csrf_token %}
+        <span>{{ request.user.get_username }}</span>
+        <button type="submit">Salir</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="desk-body">
+    {# ------------------------------------------------------------------ #}
+    <div class="barra">
+      <h2>Cómo va el día</h2>
+      <span class="nota">Montos en C$ con IVA</span>
+    </div>
+    <div class="grid">
+      <div class="tile">
+        <div class="t">Por entregar (ahora)</div>
+        <div class="n">{{ por_entregar.total.n }} <small>facturas</small></div>
+        <div class="m">C$ {{ por_entregar.total.monto|moneda }}</div>
+        <ul>
+          <li><span>Sin carga</span><span>{{ por_entregar.sin_carga.n }}</span></li>
+          <li><span>En carga planeada</span><span>{{ por_entregar.en_carga_planeada.n }}</span></li>
+          <li><span>En ruta</span><span>{{ por_entregar.en_ruta.n }}</span></li>
+          <li><span>Ruta terminada / cerrada</span><span>{{ por_entregar.ruta_terminada.n }}</span></li>
+        </ul>
+      </div>
+
+      <div class="tile">
+        <div class="t">Cargas del día</div>
+        <div class="n">{{ cargas.total }} <small>cargas</small></div>
+        <div class="estados">
+          {% for codigo, e in cargas.estados.items %}
+            <span class="badge {% if codigo == 'PLANEADA' %}badge-pendiente{% elif codigo == 'EN_RUTA' %}badge-ruta{% elif codigo == 'RUTA_TERMINADA' %}badge-terminada{% else %}badge-completa{% endif %}">{{ e.nombre }}: {{ e.n }}</span>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="tile">
+        <div class="t">Facturado del día</div>
+        <div class="n">C$ {{ facturado.monto|moneda }}</div>
+        <div class="m">{{ facturado.n }} facturas emitidas</div>
+      </div>
+
+      <div class="tile {% if entregado.pct_efectividad is not None and entregado.pct_efectividad >= 95 %}bueno{% endif %}">
+        <div class="t">Entregado del día</div>
+        <div class="n">C$ {{ entregado.valor_entregado|moneda }}</div>
+        <div class="m">{{ entregado.facturas_visitadas }} facturas visitadas</div>
+        <ul>
+          <li><span>Devuelto</span><span>C$ {{ entregado.valor_devuelto|moneda }}</span></li>
+          <li><span>Facturas con devolución</span><span>{{ entregado.facturas_con_devolucion }}</span></li>
+          <li><span>Efectividad (valor)</span><span>{% if entregado.pct_efectividad is not None %}{{ entregado.pct_efectividad|stringformat:".1f" }}%{% else %}—{% endif %}</span></li>
+        </ul>
+      </div>
+
+      <div class="tile">
+        <div class="t">Cobrado del día</div>
+        <div class="n">C$ {{ cobrado.total_dinero|moneda }}</div>
+        <div class="m">en dinero (sin notas de crédito)</div>
+        {% if cobrado.formas %}
+          <ul>
+            {% for f in cobrado.formas %}
+              <li><span>{{ f.nombre }} ({{ f.n }})</span><span>{{ f.monto|moneda }}</span></li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+
+      <div class="tile {% if cuadre.cargas_con_diferencia %}malo{% endif %}">
+        <div class="t">Cuadre de cargas cerradas</div>
+        <div class="n">{{ cuadre.cargas_cerradas }} <small>cerradas</small></div>
+        {% if cuadre.cargas_cerradas %}
+          <ul>
+            <li><span>Según sistema</span><span>{{ cuadre.segun_sistema|moneda }}</span></li>
+            <li><span>Recibido</span><span>{{ cuadre.recibido|moneda }}</span></li>
+            <li><span>Diferencia</span><span class="{% if cuadre.diferencia %}dif-mal{% else %}dif-ok{% endif %}">{{ cuadre.diferencia|moneda_signo }}</span></li>
+          </ul>
+        {% else %}
+          <div class="m">Ninguna carga cerrada este día</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ------------------------------------------------------------------ #}
+    <div class="barra">
+      <h2>Alertas</h2>
+      <span class="nota">Al día de hoy{% if not es_hoy %} (no cambian con el día elegido){% endif %}</span>
+    </div>
+
+    {% for a in alertas %}{% if a.total %}
+    <details class="alerta {{ a.nivel }}" {% if a.nivel == 'error' or forloop.counter <= 3 %}open{% endif %}>
+      <summary>
+        <span class="tit">{{ a.titulo }}</span>
+        {% if a.monto is not None %}<span class="monto-alerta">C$ {{ a.monto|moneda }}</span>{% endif %}
+        <span class="cuenta {{ a.nivel }}">{{ a.total }}</span>
+      </summary>
+      <div class="ayuda">{{ a.ayuda }}</div>
+      <div class="cuerpo scroll">
+        {% if a.clave == "facturas_atrasadas" %}
+          <table>
+            <tr><th>Factura</th><th>Cliente</th><th>Sucursal</th><th>Fecha sugerida</th><th class="r">Atraso</th><th class="r">Total</th></tr>
+            {% for f in a.filas %}
+            <tr>
+              <td>{% if enlaces_admin %}<a href="{% url 'admin:core_factura_change' f.pk %}">{{ f.numero_factura }}</a>{% else %}{{ f.numero_factura }}{% endif %}</td>
+              <td>{{ f.cliente.nombre }}</td>
+              <td>{{ f.cliente.sucursal|default:"—" }}</td>
+              <td>{{ f.fecha_sugerida_entrega|date:"d/m/Y" }}</td>
+              <td class="r">{{ f.dias_atraso }} día{{ f.dias_atraso|pluralize }}</td>
+              <td class="r">{{ f.total|moneda }}</td>
+            </tr>
+            {% endfor %}
+          </table>
+
+        {% elif a.clave == "diferencias_cuadre" %}
+          <table>
+            <tr><th>Carga</th><th>Cerrada</th><th>Ruta</th><th>Repartidor</th><th class="r">Sistema</th><th class="r">Recibido</th><th class="r">Diferencia</th></tr>
+            {% for c in a.filas %}
+            <tr>
+              <td>{% if enlaces_admin %}<a href="{% url 'admin:core_carga_cierre' c.pk %}">{{ c.codigo_reporte }}</a>{% else %}{{ c.codigo_reporte }}{% endif %}</td>
+              <td>{{ c.cerrada_en|date:"d/m/Y H:i" }}</td>
+              <td>{{ c.ruta|default:"—" }}</td>
+              <td>{{ c.conductor|default:"—" }}</td>
+              <td class="r">{{ c.sistema|moneda }}</td>
+              <td class="r">{{ c.recibido|moneda }}</td>
+              <td class="r dif-mal">{{ c.diferencia|moneda_signo }}</td>
+            </tr>
+            {% endfor %}
+          </table>
+
+        {% elif a.clave == "cartera_vencida" %}
+          <table>
+            <tr><th>Factura</th><th>Cliente</th><th>Venció</th><th class="r">Días vencida</th><th class="r">Saldo</th></tr>
+            {% for c in a.filas %}
+            <tr>
+              <td>{% if enlaces_admin %}<a href="{% url 'admin:core_factura_change' c.factura.pk %}">{{ c.factura.numero_factura }}</a>{% else %}{{ c.factura.numero_factura }}{% endif %}</td>
+              <td>{{ c.factura.cliente.nombre }}</td>
+              <td>{{ c.factura.fecha_vencimiento|date:"d/m/Y" }}</td>
+              <td class="r">{{ c.dias_vencida }}</td>
+              <td class="r">{{ c.saldo_pendiente|moneda }}</td>
+            </tr>
+            {% endfor %}
+          </table>
+
+        {% else %}
+          {# Alertas de cargas #}
+          <table>
+            <tr>
+              <th>Carga</th><th>Fecha</th><th>Ruta</th><th>Repartidor</th><th>Vehículo</th>
+              {% if a.clave == "cargas_sin_cierre" %}<th class="r">Esperando</th>{% endif %}
+              {% if a.clave == "devoluciones_bodega" %}<th>Estado de la carga</th>{% endif %}
+            </tr>
+            {% for c in a.filas %}
+            <tr>
+              <td>
+                {% if enlaces_admin %}
+                  {% if a.clave == "cargas_sin_cierre" or a.clave == "devoluciones_bodega" %}
+                    <a href="{% url 'admin:core_carga_cierre' c.pk %}">{{ c.codigo_reporte }}</a>
+                  {% else %}
+                    <a href="{% url 'admin:core_carga_change' c.pk %}">{{ c.codigo_reporte }}</a>
+                  {% endif %}
+                {% else %}{{ c.codigo_reporte }}{% endif %}
+              </td>
+              <td>{{ c.fecha_planeada|date:"d/m/Y" }}</td>
+              <td>{{ c.ruta|default:"—" }}</td>
+              <td>{{ c.conductor|default:"—" }}</td>
+              <td>{{ c.vehiculo|default:"—" }}</td>
+              {% if a.clave == "cargas_sin_cierre" %}<td class="r">{% if c.horas_espera is not None %}{% if c.horas_espera < 1 %}menos de 1 h{% else %}{{ c.horas_espera }} h{% endif %}{% else %}—{% endif %}</td>{% endif %}
+              {% if a.clave == "devoluciones_bodega" %}<td>{{ c.get_estado_display }}</td>{% endif %}
+            </tr>
+            {% endfor %}
+          </table>
+        {% endif %}
+        {% if a.total > a.filas|length %}
+          <div class="mas">Se muestran {{ a.filas|length }} de {{ a.total }}.</div>
+        {% endif %}
+      </div>
+    </details>
+    {% endif %}{% endfor %}
+
+    {% if alertas_activas == 0 %}
+      <div class="aviso ok">Todo en orden: no hay alertas pendientes.</div>
+    {% endif %}
+    <div class="sin-alertas">
+      {% for a in alertas %}{% if not a.total %}<span>✓ {{ a.titulo }}</span>{% endif %}{% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
