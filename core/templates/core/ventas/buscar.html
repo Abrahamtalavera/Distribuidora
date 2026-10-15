@@ -1,0 +1,34 @@
+{% extends "core/ventas/_marco.html" %}
+{% load formato %}
+{% block titulo %}Consulta de ventas{% endblock %}
+{% block contenido %}
+{% include "core/ventas/_buscador.html" with autofoco=True %}
+
+{% if buscado %}
+  {% if resultados %}
+    <div class="seccion">
+      <h3>{{ resultados|length }} factura{{ resultados|length|pluralize }} encontrada{{ resultados|length|pluralize }}{% if resultados|length == 50 %} (se muestran las 50 más recientes){% endif %}</h3>
+      <div class="scroll">
+        <table>
+          <tr><th>Factura</th><th>Emitida</th><th>Cliente</th><th>Carga</th><th>Estado</th><th class="r">Total</th><th class="r">Saldo</th></tr>
+          {% for f in resultados %}
+          <tr class="clic">
+            <td><a class="fila" href="{% url 'ventas_factura' f.pk %}">{{ f.numero_factura }}</a></td>
+            <td>{{ f.fecha_emision|date:"d/m/Y" }}</td>
+            <td>{{ f.cliente.nombre }}<div class="detalle">{{ f.cliente.codigo }}{% if f.cliente.sucursal %} · {{ f.cliente.sucursal }}{% endif %}</div></td>
+            <td>{% if f.carga %}{{ f.carga.codigo_reporte }}{% else %}<span class="detalle">Sin carga</span>{% endif %}</td>
+            <td><span class="badge badge-{{ f.estado_css }}">{{ f.estado_nombre }}</span></td>
+            <td class="r">{{ f.total|moneda }}</td>
+            <td class="r">{% if f.saldo is not None %}{{ f.saldo|moneda }}{% else %}—{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+  {% else %}
+    <div class="aviso warn">No se encontró ninguna factura con “{{ q }}”. Revisa el número o prueba con parte del nombre del cliente.</div>
+  {% endif %}
+{% else %}
+  <div class="aviso info" style="background:var(--accent-light);color:var(--primary-dark);">Escribe el número completo de la factura para abrirla directo, o parte del nombre del cliente para ver sus facturas.</div>
+{% endif %}
+{% endblock %}

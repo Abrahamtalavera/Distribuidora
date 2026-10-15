@@ -1,0 +1,67 @@
+{% extends "core/bodega/base.html" %}
+{% block estilos %}
+{% include "core/tablero/_estilos.html" %}
+<style>
+  .buscador { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; padding:12px 14px; border:1px solid var(--border); border-radius:10px; background:#fafbfb; margin-bottom:14px; }
+  .buscador .campo { margin:0; flex:1; min-width:200px; }
+  .buscador label, .filtros label { display:block; font-size:11px; color:var(--muted); text-transform:uppercase; margin-bottom:4px; }
+  .buscador input { width:100%; padding:10px 12px; border:1px solid #c9c9c9; border-radius:6px; font-size:15px; font-family:inherit; }
+  .btn { background:var(--primary); color:#fff; border:none; padding:10px 20px; border-radius:6px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; text-decoration:none; display:inline-block; min-height:42px; }
+  .btn-claro { background:#fff; color:var(--primary-dark); border:1px solid var(--primary); padding:8px 14px; border-radius:6px; font-size:13px; font-weight:600; text-decoration:none; display:inline-block; }
+  .filtros { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; padding:12px 14px; border:1px solid var(--border); border-radius:10px; background:#fafbfb; margin-bottom:14px; }
+  .filtros input, .filtros select { padding:8px; border:1px solid #c9c9c9; border-radius:6px; font-size:13px; font-family:inherit; background:#fff; }
+  .badge-ruta { background:var(--accent-light); color:var(--primary-dark); }
+  .badge-parcial { background:var(--warn-bg); color:#8a5200; }
+  .kv { display:flex; justify-content:space-between; gap:12px; font-size:14px; padding:4px 0; }
+  .kv .l { color:var(--muted); }
+  .kv .v { font-weight:600; text-align:right; }
+  .kv.tot { border-top:1px solid #eee; margin-top:4px; padding-top:8px; font-weight:700; }
+  .dos { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:760px) { .dos { grid-template-columns:1fr; } }
+  .cabecera { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; }
+  .cabecera .num { font-size:22px; font-weight:700; }
+  .datos { display:flex; gap:22px; flex-wrap:wrap; text-align:right; }
+  .datos div span { display:block; }
+  .datos .t { font-size:11px; color:var(--muted); text-transform:uppercase; }
+  .datos .n { font-size:15px; font-weight:600; }
+  .pasos { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:8px; }
+  @media (max-width:760px) { .pasos { grid-template-columns:repeat(2,minmax(0,1fr)); row-gap:14px; } }
+  .paso .barra { height:6px; border-radius:3px; background:#e3e6e8; margin-bottom:6px; }
+  .paso.hecho .barra { background:var(--primary); }
+  .paso.alerta .barra { background:var(--warn); }
+  .paso .tt { font-size:13px; font-weight:700; }
+  .paso:not(.hecho) .tt { color:var(--muted); }
+  .paso .dd { font-size:12px; color:var(--muted); margin-top:2px; }
+  .visita { border-top:1px solid #f0f0f0; padding-top:8px; margin-top:8px; }
+  .visita:first-of-type { border-top:none; padding-top:0; margin-top:0; }
+  .dev { color:var(--danger); font-weight:700; }
+  .vacio { font-size:13px; color:var(--muted); padding:6px 0; }
+</style>
+{% endblock %}
+
+{% block cuerpo %}
+<div class="desk">
+  <div class="desk-head">
+    <div>
+      <h1>Consulta de ventas</h1>
+      <div class="sub">Estado de entregas, devoluciones y cobros</div>
+    </div>
+    <div class="usuario">
+      {% if ve_tablero %}<a href="{% url 'tablero' %}">Tablero</a>{% endif %}
+      {% if enlaces_admin %}<a href="{% url 'admin:index' %}">Ir al admin</a>{% endif %}
+      <form method="post" action="{% url 'ventas_salir' %}" style="display:flex;align-items:center;gap:8px;">
+        {% csrf_token %}
+        <span>{{ request.user.get_username }}</span>
+        <button type="submit">Salir</button>
+      </form>
+    </div>
+  </div>
+  <nav class="pestanas">
+    <a href="{% url 'ventas_buscar' %}" class="{% if pestana == 'buscar' %}activa{% endif %}">Buscar factura</a>
+    <a href="{% url 'ventas_ruta' %}" class="{% if pestana == 'ruta' %}activa{% endif %}">Por ruta y fechas</a>
+  </nav>
+  <div class="desk-body">
+    {% block contenido %}{% endblock %}
+  </div>
+</div>
+{% endblock %}

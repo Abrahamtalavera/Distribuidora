@@ -1,0 +1,7 @@
+<form class="buscador" method="get" action="{% url 'ventas_buscar' %}">
+  <div class="campo">
+    <label for="q">Número de factura o cliente</label>
+    <input id="q" type="search" name="q" value="{{ q }}" placeholder="Ej. A-1042 o Pulpería La Esquina" autocomplete="off" {% if autofoco %}autofocus{% endif %}>
+  </div>
+  <button class="btn" type="submit">Buscar</button>
+</form>

@@ -253,3 +253,130 @@ class AnalisisTests(TableroBase):
     def test_vendedor_sin_permiso_no_ve_analisis(self):
         self.client.force_login(User.objects.create_user("vend", password="x"))
         self.assertEqual(self.client.get(reverse("tablero_analisis")).status_code, 403)
+
+
+class ConsultaVentasTests(TableroBase):
+    """Cambio #21: consulta del equipo de ventas."""
+
+    def setUp(self):
+        super().setUp()
+        from core.models import AreaResponsable, MotivoDevolucion, Ruta, Vendedor
+
+        self.motivo = MotivoDevolucion.objects.create(
+            nombre="Vencido", area_responsable=AreaResponsable.objects.create(nombre="Bodega X")
+        )
+        self.ruta = Ruta.objects.create(nombre="Norte")
+        self.otra_ruta = Ruta.objects.create(nombre="Sur")
+        self.juan = Vendedor.objects.create(nombre="Juan", tipo="REPARTIDOR")
+        self.vendedora = Vendedor.objects.create(nombre="María", tipo="VENDEDOR")
+        self.vendedor_user = User.objects.create_user("maria", password="x")
+        self.vendedor_user.groups.add(Group.objects.get(name="Ventas"))
+
+    def entregada_con_devolucion(self):
+        from core.entregas import registrar_entrega
+
+        carga = Carga.objects.create(ruta=self.ruta, conductor=self.juan, estado="EN_RUTA",
+                                     salio_a_ruta_en=timezone.now())
+        f = self.factura("A-1042", carga=carga, vendedor=self.vendedora)
+        linea = f.lineas.first()
+        registrar_entrega(
+            factura=f, repartidor=self.juan, carga=carga,
+            cantidades_entregadas={linea.id: "8"},
+            motivo_por_linea={linea.id: self.motivo.id},
+            pagos=[{"monto": "92", "forma_pago": "EFECTIVO", "numero_recibo": "R-1"}],
+            documento_devolucion="DV-1",
+        )
+        f.refresh_from_db()
+        return f
+
+    def test_estado_y_saldo(self):
+        from core.consulta import anotar, obtener_factura
+
+        f = self.entregada_con_devolucion()
+        f = obtener_factura(f.pk)
+        self.assertEqual(f.estado, "CON_DEVOLUCION")
+        self.assertEqual(f.valor_devuelto, Decimal("23.00"))
+        self.assertEqual(f.saldo, Decimal("0.00"))  # 115 - 23 devuelto - 92 pagado
+
+        sin_carga = obtener_factura(self.factura("A-2000").pk)
+        self.assertEqual(sin_carga.estado, "POR_ENTREGAR")
+        self.assertEqual(sin_carga.saldo, Decimal("115.00"))
+        anulada = obtener_factura(self.factura("A-2001", estado_factura="ANULADA").pk)
+        self.assertEqual(anulada.estado, "ANULADA")
+        self.assertIsNone(anulada.saldo)
+
+    def test_detalle_de_factura(self):
+        from core.consulta import detalle_factura, obtener_factura
+
+        f = obtener_factura(self.entregada_con_devolucion().pk)
+        d = detalle_factura(f)
+        self.assertEqual(len(d["entregas"]), 1)
+        self.assertEqual(d["productos"][0]["devuelto"], Decimal("2"))
+        self.assertIn("Vencido (Bodega X)", d["productos"][0]["motivo"])
+        self.assertEqual(d["productos"][0]["bodega"], "pendiente de recibir")
+        self.assertEqual(d["total_pagado"], Decimal("92.00"))
+        titulos = [p["titulo"] for p in d["pasos"] if p["hecho"]]
+        self.assertIn("Visitada", titulos)
+        self.assertIn("Salió a ruta", titulos)
+
+    def test_busqueda(self):
+        from core.consulta import buscar_facturas
+
+        self.factura("A-1042")
+        self.factura("A-1043")
+        exacta, _ = buscar_facturas("a-1042")
+        self.assertEqual(exacta.numero_factura, "A-1042")
+        exacta, resultados = buscar_facturas("Pulpería")
+        self.assertIsNone(exacta)
+        self.assertEqual(len(resultados), 2)
+        self.assertEqual(buscar_facturas("nada-que-ver")[1], [])
+
+    def test_listado_por_ruta_y_estado(self):
+        from core.consulta import listado
+
+        self.entregada_con_devolucion()
+        self.factura("A-3000")  # sin carga
+        Carga.objects.create(ruta=self.otra_ruta)
+        facturas, resumen, _ = listado(self.hoy, self.hoy)
+        self.assertEqual(resumen["facturas"], 2)
+        self.assertEqual(resumen["con_devolucion"], 1)
+        self.assertEqual(resumen["sin_carga"], 1)
+        solo_norte, _, _ = listado(self.hoy, self.hoy, ruta_id=self.ruta.id)
+        self.assertEqual([f.numero_factura for f in solo_norte], ["A-1042"])
+        pendientes, _, _ = listado(self.hoy, self.hoy, estado="PENDIENTES")
+        self.assertEqual([f.numero_factura for f in pendientes], ["A-3000"])
+        de_maria, _, _ = listado(self.hoy, self.hoy, vendedor_id=self.vendedora.id)
+        self.assertEqual(len(de_maria), 1)
+
+    def test_pantallas_para_vendedor(self):
+        f = self.entregada_con_devolucion()
+        self.client.force_login(self.vendedor_user)
+        # Número exacto: abre el detalle directo.
+        r = self.client.get(reverse("ventas_buscar"), {"q": "A-1042"})
+        self.assertRedirects(r, reverse("ventas_factura", args=[f.pk]))
+        r = self.client.get(reverse("ventas_factura", args=[f.pk]))
+        self.assertContains(r, "Con devolución")
+        self.assertContains(r, "DV-1")
+        r = self.client.get(reverse("ventas_ruta"), {"ruta": self.ruta.id, "desde": self.hoy.isoformat(), "hasta": self.hoy.isoformat()})
+        self.assertContains(r, "A-1042")
+        r = self.client.get(reverse("ventas_ruta_excel"), {"desde": self.hoy.isoformat()})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r["Content-Disposition"].startswith("attachment"))
+        self.assertEqual(r.content[:2], b"PK")  # es un .xlsx
+        # El vendedor no entra al tablero ni ve enlaces al admin.
+        self.assertEqual(self.client.get(reverse("tablero")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("ventas_factura", args=[99999])).status_code, 404)
+
+    def test_sin_permiso_y_sin_sesion(self):
+        r = self.client.get(reverse("ventas_ruta"))
+        self.assertEqual(r.status_code, 302)
+        self.assertIn(reverse("ventas_acceso"), r["Location"])
+        self.client.force_login(User.objects.create_user("bodeguero", password="x"))
+        self.assertEqual(self.client.get(reverse("ventas_buscar")).status_code, 403)
+
+    def test_supervisor_tambien_consulta(self):
+        u = User.objects.create_user("sup", password="x")
+        u.groups.add(Group.objects.get(name="Supervisores"))
+        self.client.force_login(u)
+        self.assertEqual(self.client.get(reverse("ventas_buscar")).status_code, 200)
+        self.assertContains(self.client.get(reverse("tablero")), reverse("ventas_buscar"))

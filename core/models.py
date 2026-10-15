@@ -400,6 +400,10 @@ class Factura(models.Model):
     class Meta:
         verbose_name_plural = "Facturas"
         ordering = ["-fecha_emision", "-numero_factura"]
+        permissions = [
+            # Cambio #21: pantalla de consulta del equipo de ventas.
+            ("consultar_ventas", "Puede usar la consulta de ventas"),
+        ]
 
     def __str__(self):
         return self.numero_factura

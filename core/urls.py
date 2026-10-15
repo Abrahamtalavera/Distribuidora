@@ -5,7 +5,7 @@
 
 from django.urls import path
 
-from core import views_bodega, views_cierre, views_entregas, views_tablero
+from core import views_bodega, views_cierre, views_entregas, views_tablero, views_ventas
 
 urlpatterns = [
     path("entregas/acceso/", views_entregas.entregas_acceso_view, name="entregas_acceso"),
@@ -55,4 +55,11 @@ urlpatterns = [
     path("tablero/analisis/", views_tablero.tablero_analisis_view, name="tablero_analisis"),
     path("tablero/acceso/", views_tablero.TableroLoginView.as_view(), name="tablero_acceso"),
     path("tablero/salir/", views_tablero.tablero_salir_view, name="tablero_salir"),
+    # Cambio #21: consulta del equipo de ventas.
+    path("ventas/", views_ventas.ventas_buscar_view, name="ventas_buscar"),
+    path("ventas/factura/<int:factura_id>/", views_ventas.ventas_factura_view, name="ventas_factura"),
+    path("ventas/ruta/", views_ventas.ventas_ruta_view, name="ventas_ruta"),
+    path("ventas/ruta/excel/", views_ventas.ventas_ruta_excel_view, name="ventas_ruta_excel"),
+    path("ventas/acceso/", views_ventas.VentasLoginView.as_view(), name="ventas_acceso"),
+    path("ventas/salir/", views_ventas.ventas_salir_view, name="ventas_salir"),
 ]

@@ -1,0 +1,69 @@
+{% extends "core/ventas/_marco.html" %}
+{% load formato %}
+{% block titulo %}Facturas por ruta{% endblock %}
+{% block contenido %}
+<form class="filtros" method="get">
+  <div>
+    <label for="ruta">Ruta</label>
+    <select id="ruta" name="ruta">
+      <option value="">Todas</option>
+      {% for r in rutas %}<option value="{{ r.pk }}" {% if r.pk == ruta_id %}selected{% endif %}>{{ r.nombre }}</option>{% endfor %}
+    </select>
+  </div>
+  <div><label for="desde">Desde</label><input id="desde" type="date" name="desde" value="{{ desde|date:'Y-m-d' }}"></div>
+  <div><label for="hasta">Hasta</label><input id="hasta" type="date" name="hasta" value="{{ hasta|date:'Y-m-d' }}"></div>
+  <div>
+    <label for="estado">Estado de entrega</label>
+    <select id="estado" name="estado">
+      {% for clave, nombre in estados %}<option value="{{ clave }}" {% if clave == estado %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
+    </select>
+  </div>
+  <div>
+    <label for="vendedor">Vendedor</label>
+    <select id="vendedor" name="vendedor">
+      <option value="">Todos</option>
+      {% for v in vendedores %}<option value="{{ v.pk }}" {% if v.pk == vendedor_id %}selected{% endif %}>{{ v.nombre }}</option>{% endfor %}
+    </select>
+  </div>
+  <button class="btn" type="submit">Consultar</button>
+</form>
+{% if aviso %}<div class="aviso warn">{{ aviso }}</div>{% endif %}
+{% if recortado %}<div class="aviso warn">Hay más de {{ max_filas }} facturas; se muestran las primeras {{ max_filas }}. Acorta el período o elige una ruta.</div>{% endif %}
+
+<div class="grid">
+  <div class="tile"><div class="t">Facturas</div><div class="n">{{ resumen.facturas }}</div><div class="m">C$ {{ resumen.monto|moneda }}</div></div>
+  <div class="tile"><div class="t">Entregadas</div><div class="n" style="color:var(--ok);">{{ resumen.entregadas }}</div><div class="m">completas</div></div>
+  <div class="tile"><div class="t">Con devolución</div><div class="n" style="color:#8a5200;">{{ resumen.con_devolucion }}</div><div class="m">C$ {{ resumen.devuelto|moneda }} devuelto en total</div></div>
+  <div class="tile"><div class="t">Por entregar / en ruta</div><div class="n" style="color:var(--primary-dark);">{{ resumen.pendientes }}</div><div class="m">{{ resumen.sin_carga }} sin carga asignada</div></div>
+  <div class="tile"><div class="t">No entregadas</div><div class="n" style="color:var(--danger);">{{ resumen.no_entregadas }}</div><div class="m">Saldo total C$ {{ resumen.saldo|moneda }}</div></div>
+</div>
+
+<div class="seccion">
+  {% if facturas %}
+  <div class="scroll">
+    <table>
+      <tr><th>Factura</th><th>Emitida</th><th>Cliente</th><th>Carga / repartidor</th><th>Estado</th><th class="r">Total</th><th class="r">Devuelto</th><th class="r">Saldo</th></tr>
+      {% for f in facturas %}
+      <tr class="clic">
+        <td><a class="fila" href="{% url 'ventas_factura' f.pk %}?volver={{ consulta|urlencode }}">{{ f.numero_factura }}</a></td>
+        <td>{{ f.fecha_emision|date:"d/m/Y" }}</td>
+        <td>{{ f.cliente.nombre }}{% if f.vendedor %}<div class="detalle">{{ f.vendedor.nombre }}</div>{% endif %}</td>
+        <td>{% if f.carga %}{{ f.carga.codigo_reporte }}<div class="detalle">{{ f.carga.conductor|default:"Sin repartidor" }}{% if not ruta_id and f.carga.ruta %} · {{ f.carga.ruta }}{% endif %}</div>{% else %}<span class="detalle">Sin carga asignada</span>{% endif %}</td>
+        <td><span class="badge badge-{{ f.estado_css }}">{{ f.estado_nombre }}</span></td>
+        <td class="r">{{ f.total|moneda }}</td>
+        <td class="r">{% if f.valor_devuelto %}<span class="dev">{{ f.valor_devuelto|moneda }}</span>{% else %}—{% endif %}</td>
+        <td class="r" style="font-weight:600;">{% if f.saldo is not None %}{{ f.saldo|moneda }}{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% else %}
+    <div class="vacio">No hay facturas con estos filtros.</div>
+  {% endif %}
+</div>
+
+<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted);">
+  <span>Fechas por fecha de emisión. Toca un número de factura para ver su detalle.</span>
+  {% if facturas %}<a class="btn-claro" href="{% url 'ventas_ruta_excel' %}?{{ consulta }}">Descargar en Excel</a>{% endif %}
+</div>
+{% endblock %}
