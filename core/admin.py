@@ -88,7 +88,7 @@ class FacturaAdmin(admin.ModelAdmin):
     search_fields = ("numero_factura", "cliente__nombre", "cliente__codigo")
     inlines = [FacturaDetalleInline]
     change_list_template = "admin/core/factura/change_list.html"
-    actions = ["agrupar_en_carga"]
+    actions = ["agrupar_en_carga", "agregar_a_carga_existente"]
 
     class Media:
         css = {"all": ("core/admin_dropdown_filters.css",)}
@@ -288,6 +288,82 @@ class FacturaAdmin(admin.ModelAdmin):
         )
 
     agrupar_en_carga.short_description = "Agrupar seleccionadas en una nueva Carga"
+
+    def agregar_a_carga_existente(self, request, queryset):
+        """
+        Acción de admin (Cambio #23): agrega las facturas seleccionadas a una
+        Carga que ya existe (Planeada o En ruta). Pantalla intermedia para
+        elegir la carga y, si la unidad lo pide, escribir paquetes y costo.
+        """
+        from core.asignar import AsignarError, agregar_a_carga, cargas_destino, revisar
+
+        facturas = list(queryset.select_related("cliente", "carga").order_by("numero_factura"))
+        cargas = list(cargas_destino()[:200])
+        destino = None
+        destino_id = request.POST.get("carga_destino", "")
+        if destino_id.isdigit():
+            destino = next((c for c in cargas if c.id == int(destino_id)), None)
+        escritos, errores = {}, {}
+        if "apply" in request.POST:
+            if destino is None:
+                messages.error(request, "Elige la carga a la que quieres agregar las facturas.")
+            else:
+                aptas, _ = revisar(facturas, destino)
+                valores = {}
+                if destino.pide_paquetes_costo:
+                    valores, escritos, errores = leer_paquetes_costo(request.POST, aptas)
+                if errores:
+                    messages.error(
+                        request,
+                        f"La unidad {destino.vehiculo.placa} pide paquetes y costo en cada factura. "
+                        "Los campos marcados en rojo están vacíos o no son válidos.",
+                    )
+                else:
+                    try:
+                        agregadas, no_aptas = agregar_a_carga(destino, facturas, valores)
+                    except AsignarError as exc:
+                        messages.error(request, str(exc))
+                    else:
+                        texto = (
+                            f"{len(agregadas)} factura{'s' if len(agregadas) != 1 else ''} "
+                            f"agregada{'s' if len(agregadas) != 1 else ''} a {destino.codigo_reporte}."
+                        )
+                        if no_aptas:
+                            texto += " No se agregaron: " + "; ".join(
+                                f"{f.numero_factura} ({f.motivo.lower()})" for f in no_aptas
+                            ) + "."
+                        if destino.estado == "EN_RUTA":
+                            texto += (
+                                " La carga ya está en ruta: el repartidor debe marcarlas como "
+                                "cargadas antes de poder entregarlas."
+                            )
+                        self.message_user(
+                            request, texto, messages.WARNING if no_aptas else messages.SUCCESS
+                        )
+                        return None
+
+        revisar(facturas, destino)
+        for f in facturas:
+            f.paq_escrito, f.cos_escrito = escritos.get(f.id, ("", ""))
+            f.errores_paq = errores.get(f.id, set())
+        for c in cargas:
+            c.total_facturas = c.facturas.filter(estado_factura="ACTIVA").count()
+        return render(
+            request,
+            "admin/core/factura/agregar_a_carga.html",
+            {
+                "facturas": facturas,
+                "aptas": sum(1 for f in facturas if f.puede),
+                "cargas": cargas,
+                "destino": destino,
+                "cargas_con_paquetes": [c.id for c in cargas if c.pide_paquetes_costo],
+                "action_checkbox_name": ACTION_CHECKBOX_NAME,
+                "opts": self.model._meta,
+                "title": "Agregar facturas a una Carga existente",
+            },
+        )
+
+    agregar_a_carga_existente.short_description = "Agregar seleccionadas a una Carga existente"
 
 
 @admin.register(models.Cliente)

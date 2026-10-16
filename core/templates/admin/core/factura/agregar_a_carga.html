@@ -1,0 +1,125 @@
+{% extends "admin/base_site.html" %}
+{% load formato %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  /* Cambio #23 */
+  .tabla { width:100%; margin:8px 0 16px; }
+  .tabla td.r, .tabla th.r { text-align:right; white-space:nowrap; }
+  .tabla tr.no td { color:var(--body-quiet-color); }
+  .tabla label { display:block; cursor:pointer; }
+  .tabla tr.elegible:hover td { background:var(--darkened-bg); }
+  .estado { font-size:11px; font-weight:700; padding:2px 8px; border-radius:10px; white-space:nowrap; }
+  .estado.planeada { background:#eee; color:#555; }
+  .estado.ruta { background:#fff3e0; color:#8a5200; }
+  .ok { color:#2e7d32; font-weight:600; }
+  .mal { color:#ba2121; font-weight:600; }
+  .aviso-ruta { border:1px solid #f0c36d; background:#fffdf3; border-radius:6px; padding:10px 12px; margin:10px 0; }
+  .bloque-paq input { width:100px; text-align:right; }
+  .bloque-paq input.con-error { border-color:#ba2121; background:#fdecea; }
+  .oculto { display:none !important; }
+  h2.sec { margin:18px 0 4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<form method="post">
+  {% csrf_token %}
+
+  <h2 class="sec">1. Elige la carga</h2>
+  {% if cargas %}
+  <p class="help">Solo aparecen las cargas Planeadas o En ruta.</p>
+  <table class="tabla">
+    <thead><tr><th></th><th>Carga</th><th>Fecha</th><th>Ruta</th><th>Repartidor</th><th>Unidad</th><th>Estado</th><th class="r">Facturas</th></tr></thead>
+    <tbody>
+      {% for c in cargas %}
+      <tr class="elegible">
+        <td><input type="radio" name="carga_destino" value="{{ c.pk }}" id="carga_{{ c.pk }}" {% if destino and destino.pk == c.pk %}checked{% endif %} required></td>
+        <td><label for="carga_{{ c.pk }}"><b>{{ c.codigo_reporte }}</b></label></td>
+        <td><label for="carga_{{ c.pk }}">{{ c.fecha_planeada|date:"d/m/Y" }}</label></td>
+        <td>{{ c.ruta|default:"—" }}</td>
+        <td>{{ c.conductor|default:"—" }}</td>
+        <td>{{ c.vehiculo|default:"—" }}{% if c.pide_paquetes_costo %} <span class="help">(pide paquetes y costo)</span>{% endif %}</td>
+        <td><span class="estado {% if c.estado == 'EN_RUTA' %}ruta{% else %}planeada{% endif %}">{{ c.get_estado_display }}</span></td>
+        <td class="r">{{ c.total_facturas }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="aviso-ruta oculto" id="avisoRuta">Esta carga ya <b>salió a ruta</b>: las facturas entran como “por cargar” y el repartidor debe marcarlas como cargadas antes de poder entregarlas.</div>
+  {% else %}
+  <p class="errornote">No hay cargas Planeadas ni En ruta. Usa la acción “Agrupar seleccionadas en una nueva Carga”.</p>
+  {% endif %}
+
+  <h2 class="sec">2. Facturas seleccionadas ({{ facturas|length }})</h2>
+  <table class="tabla">
+    <thead><tr><th>Factura</th><th>Cliente</th><th>Entrega</th><th>Carga actual</th><th class="r">Total</th><th>Resultado</th><th class="r col-paq oculto">Paquetes</th><th class="r col-paq oculto">Costo (C$)</th></tr></thead>
+    <tbody>
+      {% for f in facturas %}
+      <tr class="{% if not f.puede %}no{% endif %}" data-carga="{{ f.carga_id|default:'' }}" data-cargada="{% if f.esta_cargada %}1{% else %}0{% endif %}" data-carga-estado="{{ f.carga.estado|default:'' }}" data-puede-base="{% if f.puede or f.motivo == 'Ya está en esta carga' %}1{% else %}0{% endif %}" data-motivo-base="{% if not f.puede and f.motivo != 'Ya está en esta carga' %}{{ f.motivo }}{% endif %}" data-aviso="{{ f.aviso }}">
+        <td><b>{{ f.numero_factura }}</b></td>
+        <td>{{ f.cliente }}</td>
+        <td>{{ f.get_estado_entrega_display }}</td>
+        <td>{% if f.carga %}{{ f.carga.codigo_reporte }} <span class="help">({{ f.carga.get_estado_display }})</span>{% else %}<span class="help">Sin carga</span>{% endif %}</td>
+        <td class="r">{{ f.total|moneda }}</td>
+        <td class="resultado">{% if f.puede %}<span class="ok">Se agrega</span>{% if f.aviso %} · {{ f.aviso }}{% endif %}{% else %}<span class="mal">No se agrega:</span> {{ f.motivo }}{% endif %}</td>
+        <td class="r col-paq oculto">{% if f.puede or f.motivo == 'Ya está en esta carga' %}<input type="number" min="0" step="1" name="paq_{{ f.pk }}" class="paq{% if 'paq' in f.errores_paq %} con-error{% endif %}" value="{{ f.paq_escrito }}" aria-label="Paquetes de {{ f.numero_factura }}">{% endif %}</td>
+        <td class="r col-paq oculto">{% if f.puede or f.motivo == 'Ya está en esta carga' %}<input type="number" min="0" step="0.01" name="cos_{{ f.pk }}" class="cos{% if 'cos' in f.errores_paq %} con-error{% endif %}" value="{{ f.cos_escrito }}" aria-label="Costo de {{ f.numero_factura }}">{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="help bloque-paq oculto" id="ayudaPaq">La unidad de esta carga pide paquetes y costo: son obligatorios en cada factura que se agrega.</p>
+
+  {% for f in facturas %}
+    <input type="hidden" name="{{ action_checkbox_name }}" value="{{ f.pk }}">
+  {% endfor %}
+  <input type="hidden" name="action" value="agregar_a_carga_existente">
+  <input type="submit" name="apply" value="Agregar a la carga" class="default" id="btnAgregar" {% if not cargas %}disabled{% endif %}>
+  <a href="../" class="button cancel-link">Cancelar</a>
+</form>
+
+{{ cargas_con_paquetes|json_script:"cargasConPaquetes" }}
+<script>
+(function () {
+  "use strict";
+  var conPaq = JSON.parse(document.getElementById("cargasConPaquetes").textContent).map(String);
+  var radios = document.querySelectorAll("input[name=carga_destino]");
+  var filas = document.querySelectorAll("tbody tr[data-puede-base]");
+  var estadoDe = {};
+  radios.forEach(function (r) { estadoDe[r.value] = r.closest("tr").querySelector(".estado").textContent.trim(); });
+  function esc(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+  function actualizar() {
+    var elegido = document.querySelector("input[name=carga_destino]:checked");
+    var id = elegido ? elegido.value : "";
+    var pide = conPaq.indexOf(id) >= 0;
+    document.querySelectorAll(".col-paq, #ayudaPaq").forEach(function (el) { el.classList.toggle("oculto", !pide); });
+    document.getElementById("avisoRuta").classList.toggle("oculto", !elegido || estadoDe[id] !== "En ruta");
+    var aptas = 0;
+    filas.forEach(function (tr) {
+      var celda = tr.querySelector(".resultado");
+      var puede = tr.dataset.puedeBase === "1";
+      var motivo = tr.dataset.motivoBase;
+      if (puede && id && tr.dataset.carga === id) { puede = false; motivo = "Ya está en esta carga"; }
+      tr.classList.toggle("no", !puede);
+      tr.querySelectorAll("input").forEach(function (i) { i.required = puede && pide; i.disabled = !puede; });
+      if (puede) {
+        aptas++;
+        var aviso = (tr.dataset.carga && tr.dataset.carga !== id) ? tr.dataset.aviso : "";
+        celda.innerHTML = '<span class="ok">Se agrega</span>' + (aviso ? " · " + esc(aviso) : "");
+      } else {
+        celda.innerHTML = '<span class="mal">No se agrega:</span> ' + esc(motivo);
+      }
+    });
+    var btn = document.getElementById("btnAgregar");
+    btn.disabled = !radios.length || aptas === 0;
+    btn.value = aptas ? "Agregar " + aptas + " factura" + (aptas === 1 ? "" : "s") + " a la carga" : "Ninguna factura se puede agregar";
+  }
+  radios.forEach(function (r) { r.addEventListener("change", actualizar); });
+  document.querySelectorAll(".paq, .cos").forEach(function (i) { i.addEventListener("input", function () { i.classList.remove("con-error"); }); });
+  actualizar();
+})();
+</script>
+{% endblock %}

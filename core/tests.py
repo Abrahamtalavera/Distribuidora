@@ -531,3 +531,61 @@ class HorasYGpsTests(TableroBase):
         self.assertContains(self.client.get(reverse("admin:core_carga_cierre", args=[self.carga.id])), "Horas corregidas por oficina")
         r = self.client.get(reverse("tablero_analisis"), {"desde": (self.hoy - timedelta(days=1)).isoformat()})
         self.assertContains(r, "GPS en el cliente")
+
+
+class AgregarACargaExistenteTests(TableroBase):
+    """Cambio #23: agregar facturas seleccionadas a una Carga existente."""
+
+    def setUp(self):
+        super().setUp()
+        from core.models import Vehiculo
+
+        self.planeada = Carga.objects.create(estado="PLANEADA")
+        self.en_ruta = Carga.objects.create(estado="EN_RUTA", salio_a_ruta_en=timezone.now())
+        self.cerrada = Carga.objects.create(estado="CERRADA")
+        self.camion_paq = Vehiculo.objects.create(placa="M000003", pide_paquetes_costo=True)
+        self.con_paq = Carga.objects.create(estado="PLANEADA", vehiculo=self.camion_paq)
+        self.admin = User.objects.create_superuser("jefe", password="x")
+
+    def test_reglas(self):
+        from core.asignar import AsignarError, agregar_a_carga
+
+        libre = self.factura("F-LIBRE")
+        de_otra = self.factura("F-OTRA", carga=self.planeada, cargada_en=timezone.now(), paquetes=3)
+        en_camion = self.factura("F-CAMION", carga=self.en_ruta, cargada_en=timezone.now())
+        anulada = self.factura("F-ANUL", estado_factura="ANULADA")
+        entregada = self.factura("F-ENT", estado_entrega="COMPLETA")
+        destino = Carga.objects.create(estado="EN_RUTA")
+        agregadas, no = agregar_a_carga(destino, [libre, de_otra, en_camion, anulada, entregada])
+        self.assertEqual({f.numero_factura for f in agregadas}, {"F-LIBRE", "F-OTRA"})
+        self.assertEqual({f.numero_factura for f in no}, {"F-CAMION", "F-ANUL", "F-ENT"})
+        de_otra.refresh_from_db()
+        self.assertEqual(de_otra.carga, destino)
+        self.assertIsNone(de_otra.cargada_en)  # hay que volver a cargarla
+        self.assertIsNone(de_otra.paquetes)
+        with self.assertRaises(AsignarError):
+            agregar_a_carga(self.cerrada, [self.factura("F-X")])
+        with self.assertRaises(AsignarError):  # la unidad pide paquetes y costo
+            agregar_a_carga(self.con_paq, [self.factura("F-Y")])
+
+    def test_accion_desde_la_lista_de_facturas(self):
+        from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
+
+        f1, f2 = self.factura("F-1"), self.factura("F-2")
+        self.client.force_login(self.admin)
+        url = reverse("admin:core_factura_changelist")
+        datos = {"action": "agregar_a_carga_existente", ACTION_CHECKBOX_NAME: [f1.pk, f2.pk]}
+        r = self.client.post(url, datos)
+        self.assertContains(r, "Agregar facturas a una Carga existente")
+        self.assertContains(r, self.planeada.codigo_reporte)
+        self.assertNotContains(r, self.cerrada.codigo_reporte)
+        # Unidad con paquetes: sin datos no deja; con datos sí.
+        r = self.client.post(url, {**datos, "apply": "1", "carga_destino": self.con_paq.pk})
+        self.assertContains(r, "pide paquetes y costo")
+        f1.refresh_from_db()
+        self.assertIsNone(f1.carga)
+        r = self.client.post(url, {**datos, "apply": "1", "carga_destino": self.con_paq.pk,
+                                   f"paq_{f1.pk}": "2", f"cos_{f1.pk}": "50", f"paq_{f2.pk}": "1", f"cos_{f2.pk}": "25"})
+        self.assertEqual(r.status_code, 302)
+        f1.refresh_from_db()
+        self.assertEqual((f1.carga, f1.paquetes, f1.costo_flete), (self.con_paq, 2, Decimal("50.00")))
