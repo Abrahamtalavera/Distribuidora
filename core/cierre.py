@@ -20,6 +20,7 @@ from django.utils import timezone
 from core.bodega import devoluciones_de_la_carga, resumen_recepcion
 from core.entregas import valor_unitario
 from core.models import CargaCuadre, Factura, Pago
+from core.tiempos import tiempos_de_la_carga
 
 CENTAVO = Decimal("0.01")
 CERO = Decimal("0")
@@ -279,6 +280,17 @@ def resumen_cierre(carga):
 
     visitadas = sum(1 for f in facturas if f.resultado != "SIN_VISITAR")
 
+    # Cambio #22: horas de llegada y entrega, GPS y orden de visita.
+    tiempos = tiempos_de_la_carga(carga)
+    for fila in filas:
+        datos = tiempos["por_factura"].get(fila["factura"].id) if not fila["factura"].liberada else None
+        fila["hora"] = datos["hora"] if datos else None
+        fila["llegada"] = datos["llegada"] if datos else None
+        fila["orden"] = datos["orden"] if datos else None
+        fila["en_cliente"] = datos["en_cliente"] if datos else None
+        fila["gps"] = datos["gps"] if datos else None
+    filas.sort(key=lambda f: (f["orden"] is None, f["orden"] or 0, f["hora"] or timezone.now(), f["factura"].numero_factura))
+
     return {
         "filas": filas,
         "totales": totales,
@@ -316,6 +328,7 @@ def resumen_cierre(carga):
         "valor_devuelto": totales["devuelto"],
         "docs_devolucion": len(docs_devolucion),
         "km_recorrido": km_recorrido,
+        "tiempos": tiempos,
     }
 
 

@@ -199,6 +199,17 @@ def detalle_factura(factura):
         )
         .order_by("fecha_entrega", "id")
     )
+    # Cambio #22: llegada al cliente e indicador de GPS de cada visita.
+    from core.models import ParadaCliente
+    from core.tiempos import indicador_gps
+
+    llegadas = {
+        p.carga_id: p.llegada_en
+        for p in ParadaCliente.objects.filter(cliente=factura.cliente, carga_id__in={e.carga_id for e in entregas})
+    }
+    for e in entregas:
+        e.llegada = llegadas.get(e.carga_id)
+        e.gps = indicador_gps(e, factura.cliente) if e.gps_estado else None
     ultima = entregas[-1] if entregas else None
     carga = factura.carga or (ultima.carga if ultima else None)
 

@@ -21,6 +21,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from core.entregas import valor_unitario
+from core.tiempos import _promedio, indicador_gps, tiempos_de_la_carga
 from core.models import Carga, EntregaDetalle, Factura
 
 CERO = Decimal("0")
@@ -105,7 +106,11 @@ def _ruta(entrega):
 
 
 def _fila_desempeno(nombre):
-    return {"nombre": nombre, "facturas": set(), "con_dev": set(), "entregado": CERO, "devuelto": CERO}
+    return {
+        "nombre": nombre, "facturas": set(), "con_dev": set(), "entregado": CERO, "devuelto": CERO,
+        # Cambio #22: indicador de GPS por visita (entrega).
+        "gps": {},
+    }
 
 
 def _cerrar_desempeno(grupos):
@@ -120,6 +125,13 @@ def _cerrar_desempeno(grupos):
                 "entregado": entregado,
                 "devuelto": devuelto,
                 "efectividad": _pct(entregado, entregado + devuelto),
+                "gps_total": len(g["gps"]),
+                "gps_en_cliente": sum(1 for c in g["gps"].values() if c in ("EN_CLIENTE", "PRIMERA")),
+                "gps_lejos": sum(1 for c in g["gps"].values() if c == "LEJOS"),
+                "gps_pct": _pct(
+                    sum(1 for c in g["gps"].values() if c in ("EN_CLIENTE", "PRIMERA")),
+                    sum(1 for c in g["gps"].values() if c in ("EN_CLIENTE", "PRIMERA", "LEJOS")),
+                ),
             }
         )
     filas.sort(key=lambda f: f["entregado"], reverse=True)
@@ -136,6 +148,7 @@ def analisis_entregas(desde, hasta, ruta_id=None, repartidor_id=None):
     por_producto = defaultdict(lambda: {"valor": CERO, "cantidad": CERO, "unidad": ""})
     total_ent = total_dev = CERO
     facturas = set()
+    gps_por_entrega = {}
 
     for linea in _lineas_del_periodo(desde, hasta, ruta_id, repartidor_id):
         e = linea.entrega
@@ -146,8 +159,12 @@ def analisis_entregas(desde, hasta, ruta_id=None, repartidor_id=None):
         total_dev += dev
         facturas.add(e.factura_id)
 
+        if e.id not in gps_por_entrega:
+            gps_por_entrega[e.id] = indicador_gps(e, e.factura.cliente)["codigo"] if e.gps_estado else None
         for grupos, nombre in ((por_repartidor, _repartidor(e)), (por_ruta, _ruta(e))):
             g = grupos.setdefault(nombre, _fila_desempeno(nombre))
+            if gps_por_entrega[e.id]:
+                g["gps"][e.id] = gps_por_entrega[e.id]
             g["facturas"].add(e.factura_id)
             g["entregado"] += ent
             g["devuelto"] += dev
@@ -265,8 +282,52 @@ def analisis_unidades(desde, hasta, ruta_id=None, repartidor_id=None):
     return _con_barras(filas, "km")
 
 
-def resumen_analisis(desde, hasta, ruta_id=None, repartidor_id=None):
+def tiempos_por_grupo(desde, hasta, ruta_id=None, repartidor_id=None):
+    """
+    Cambio #22: tiempos promedio de las cargas del período que ya terminaron
+    ruta, por repartidor y por ruta: tiempo en ruta, tiempo en cada cliente
+    y tiempo entre clientes.
+    """
+    cargas = Carga.objects.filter(
+        fecha_planeada__gte=desde,
+        fecha_planeada__lte=hasta,
+        estado__in=("RUTA_TERMINADA", "CERRADA"),
+        salio_a_ruta_en__isnull=False,
+    ).select_related("ruta", "conductor")
+    if ruta_id:
+        cargas = cargas.filter(ruta_id=ruta_id)
+    if repartidor_id:
+        cargas = cargas.filter(conductor_id=repartidor_id)
+    acumulado = {"repartidor": defaultdict(lambda: defaultdict(list)), "ruta": defaultdict(lambda: defaultdict(list))}
+    for carga in cargas:
+        t = tiempos_de_la_carga(carga)
+        claves = (
+            ("repartidor", carga.conductor.nombre if carga.conductor_id else SIN_DATO),
+            ("ruta", carga.ruta.nombre if carga.ruta_id else SIN_DATO),
+        )
+        for tipo, nombre in claves:
+            a = acumulado[tipo][nombre]
+            a["total"].append(t["total"])
+            a["en_cliente"].extend(p["en_cliente"] for p in t["paradas"])
+            a["viaje"].extend(p["viaje"] for p in t["paradas"][1:])
+            if t["total"] and t["clientes_visitados"]:
+                a["por_cliente"].append(t["total"] / t["clientes_visitados"])
     return {
-        "entregas": analisis_entregas(desde, hasta, ruta_id, repartidor_id),
+        tipo: {
+            nombre: {clave: _promedio(valores) for clave, valores in a.items()}
+            for nombre, a in grupos.items()
+        }
+        for tipo, grupos in acumulado.items()
+    }
+
+
+def resumen_analisis(desde, hasta, ruta_id=None, repartidor_id=None):
+    entregas = analisis_entregas(desde, hasta, ruta_id, repartidor_id)
+    tiempos = tiempos_por_grupo(desde, hasta, ruta_id, repartidor_id)
+    for tipo, filas in (("repartidor", entregas["por_repartidor"]), ("ruta", entregas["por_ruta"])):
+        for fila in filas:
+            fila["tiempos"] = tiempos[tipo].get(fila["nombre"], {})
+    return {
+        "entregas": entregas,
         "unidades": analisis_unidades(desde, hasta, ruta_id, repartidor_id),
     }

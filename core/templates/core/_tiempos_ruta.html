@@ -1,0 +1,46 @@
+{% load formato %}
+{% comment %}Cambio #22: horas y tiempos de la ruta (cierre de oficina y reporte impreso).{% endcomment %}
+{% with t=r.tiempos %}
+<div class="seccion tiempos-ruta">
+  <h3>Horas y tiempos de la ruta{% if enlace_corregir %} <a href="{{ enlace_corregir }}" class="corregir">Corregir horas</a>{% endif %}</h3>
+  <div class="grid">
+    <div class="tile"><div class="t">Salida a ruta</div><div class="n">{% if t.salida %}{{ t.salida|time:"H:i" }}{% else %}—{% endif %}</div><div class="m">{% if t.salida %}{{ t.salida|date:"d/m/Y" }}{% else %}no ha salido{% endif %}</div></div>
+    <div class="tile"><div class="t">Fin de ruta</div><div class="n">{% if t.fin %}{{ t.fin|time:"H:i" }}{% else %}—{% endif %}</div><div class="m">{% if t.fin %}{{ t.fin|date:"d/m/Y" }}{% else %}no ha terminado{% endif %}</div></div>
+    <div class="tile"><div class="t">Tiempo en ruta</div><div class="n">{{ t.total|duracion }}</div><div class="m">{{ t.clientes_visitados }} cliente{{ t.clientes_visitados|pluralize }} visitado{{ t.clientes_visitados|pluralize }}</div></div>
+    <div class="tile"><div class="t">Hasta el primer cliente</div><div class="n">{{ t.hasta_primer_cliente|duracion }}</div><div class="m">del último cliente al fin: {{ t.ultimo_a_fin|duracion }}</div></div>
+    <div class="tile"><div class="t">Promedio en cada cliente</div><div class="n">{{ t.promedio_en_cliente|duracion }}</div><div class="m">de “Llegué” a la última entrega</div></div>
+    <div class="tile"><div class="t">Entre clientes</div><div class="n">{{ t.promedio_viaje|duracion }}</div><div class="m">promedio · mayor: {{ t.mayor_viaje|duracion }}</div></div>
+    <div class="tile"><div class="t">GPS en el cliente</div><div class="n">{{ t.gps_en_cliente }} de {{ t.gps_total }}</div><div class="m">{{ t.gps_lejos }} lejos · {{ t.gps_sin }} sin GPS</div></div>
+  </div>
+  {% if t.sin_llegada %}<div class="aviso warn">{{ t.sin_llegada }} cliente{{ t.sin_llegada|pluralize }} sin hora de llegada (no se tocó “Llegué”, o son entregas de antes de este cambio).</div>{% endif %}
+  {% if t.paradas %}
+  <div class="scroll">
+    <table>
+      <thead><tr><th>#</th><th>Cliente</th><th>Facturas</th><th class="r">Llegó</th><th class="r">Salió</th><th class="r">En el cliente</th><th class="r">Viaje desde el anterior</th></tr></thead>
+      <tbody>
+        {% for p in t.paradas %}
+        <tr>
+          <td>{{ p.orden }}</td>
+          <td>{{ p.cliente.nombre }}</td>
+          <td>{{ p.facturas|join:", "|default:"—" }}</td>
+          <td class="r">{% if p.llegada %}{{ p.llegada|time:"H:i" }}{% if p.llegada_sin_senal %}<span class="detalle" title="Marcada sin señal"> *</span>{% endif %}{% else %}—{% endif %}</td>
+          <td class="r">{% if p.salida %}{{ p.salida|time:"H:i" }}{% else %}—{% endif %}</td>
+          <td class="r">{{ p.en_cliente|duracion }}</td>
+          <td class="r{% if p.viaje and p.viaje == t.mayor_viaje and t.paradas|length > 2 %} dif-mal{% endif %}">{{ p.viaje|duracion }}{% if forloop.first %} <span class="detalle">(desde la salida)</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if t.paradas|length > 2 %}<div class="detalle" style="margin-top:6px">En rojo, el mayor tiempo entre clientes. * = “Llegué” marcado sin señal.</div>{% endif %}
+  {% endif %}
+  {% if t.correcciones %}
+  <div class="detalle" style="margin-top:10px">
+    <b>Horas corregidas por oficina</b>
+    {% for c in t.correcciones %}
+      <div>{{ c.get_campo_display }}{% if c.entrega %} {{ c.entrega.factura.numero_factura }}{% elif c.parada %} {{ c.parada.cliente.nombre }}{% endif %}: {% if c.valor_anterior %}{{ c.valor_anterior|date:"d/m H:i" }}{% else %}—{% endif %} → {{ c.valor_nuevo|date:"d/m H:i" }} · {{ c.usuario.get_username|default:"—" }}, {{ c.corregido_en|date:"d/m/Y H:i" }} · “{{ c.motivo }}”</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endwith %}

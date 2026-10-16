@@ -18,6 +18,9 @@
     {% if pide_paquetes %}· {{ total_paquetes }} paquete{{ total_paquetes|pluralize }}{% endif %}
     · <span id="contador">{% if fase_carga %}{{ cargadas }} de {{ total_facturas }} facturas cargadas{% else %}{{ entregadas }} de {{ total_facturas }} facturas visitadas{% endif %}</span>
   </div>
+  {% if tiempos and tiempos.salida %}
+  <div class="subtitulo horas-ruta">Salida {{ tiempos.salida|time:"H:i" }}{% if tiempos.fin %} · Fin {{ tiempos.fin|time:"H:i" }} · {{ tiempos.total_texto }} en ruta{% endif %}</div>
+  {% endif %}
   <div class="progreso-bar"><div class="progreso-fill" id="progreso" style="width:{{ porcentaje }}%"></div></div>
 </header>
 {% endblock %}
@@ -45,6 +48,11 @@
       <div class="kv"><span class="l">Notas de crédito</span><span>C$ {{ r.nota_credito_total|moneda }}</span></div>
     {% endif %}
     <div class="kv"><span class="l">Valor devuelto</span><span>C$ {{ r.valor_devuelto|moneda }}</span></div>
+    {% if tiempos and tiempos.salida %}
+      <div class="kv"><span class="l">Salida a ruta</span><span>{{ tiempos.salida|date:"d/m H:i" }}</span></div>
+      <div class="kv"><span class="l">Fin de ruta</span><span>{% if tiempos.fin %}{{ tiempos.fin|date:"d/m H:i" }}{% else %}—{% endif %}</span></div>
+      <div class="kv"><span class="l">Tiempo en ruta</span><span>{{ tiempos.total_texto }}</span></div>
+    {% endif %}
     {% if r.km_recorrido is not None %}
       <div class="kv"><span class="l">Km recorridos</span><span>{{ r.km_recorrido|km }} km</span></div>
     {% endif %}
@@ -100,6 +108,7 @@
       {% endif %}
       {% if factura.resultado != "SIN_VISITAR" %}
         <span class="badge badge-{{ factura.resultado_css }}">{{ factura.resultado_nombre }}</span>
+        {% if factura.hora_entrega %}<span class="badge badge-hora">{% if factura.hora_llegada %}Llegó {{ factura.hora_llegada|time:"H:i" }} · {% endif %}Entregó {{ factura.hora_entrega|time:"H:i" }}</span>{% endif %}
       {% elif factura.esta_cargada %}
         <span class="badge badge-cargada etiqueta-carga">Cargada</span>
       {% else %}
@@ -142,6 +151,10 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+  .horas-ruta { margin-top:2px; font-weight:600; }
+  .badge-hora { background:#eef3f6; color:#2b4f5e; }
+</style>
 <script>
 (function () {
   "use strict";

@@ -52,6 +52,8 @@
     {% for e in entregas %}
       <div class="visita">
         <div class="kv"><span class="l">{% if entregas|length > 1 %}Visita {{ forloop.counter }}{% else %}Visitada{% endif %}</span><span class="v">{{ e.fecha_entrega|date:"d/m/Y H:i" }}{% if e.repartidor and not carga or e.repartidor and e.repartidor != carga.conductor %} · {{ e.repartidor }}{% endif %}</span></div>
+        {% if e.llegada %}<div class="kv"><span class="l">Llegó al cliente</span><span class="v">{{ e.llegada|date:"H:i" }}</span></div>{% endif %}
+        {% if e.gps %}<div class="kv"><span class="l">GPS</span><span class="v">{% if e.gps.mapa %}<a href="{{ e.gps.mapa }}" target="_blank" rel="noopener" class="badge badge-{{ e.gps.css }}" style="text-decoration:none">{{ e.gps.texto }}</a>{% else %}<span class="badge badge-{{ e.gps.css }}">{{ e.gps.texto }}</span>{% endif %}</span></div>{% endif %}
         {% if e.documento_cliente %}<div class="kv"><span class="l">Factura dejada al cliente</span><span class="v">{{ e.get_documento_cliente_display }}</span></div>{% endif %}
         {% if e.documento_devolucion %}<div class="kv"><span class="l">Doc. de devolución</span><span class="v">{{ e.documento_devolucion }}</span></div>{% endif %}
         {% if e.motivo_devolucion_general %}<div class="kv"><span class="l">Motivo de la visita</span><span class="v">{{ e.motivo_devolucion_general.nombre }}</span></div>{% endif %}

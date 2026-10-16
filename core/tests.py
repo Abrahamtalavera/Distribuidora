@@ -380,3 +380,154 @@ class ConsultaVentasTests(TableroBase):
         self.client.force_login(u)
         self.assertEqual(self.client.get(reverse("ventas_buscar")).status_code, 200)
         self.assertContains(self.client.get(reverse("tablero")), reverse("ventas_buscar"))
+
+
+class HorasYGpsTests(TableroBase):
+    """Cambio #22: salida, llegada, entrega y fin de ruta; GPS; correcciones."""
+
+    def setUp(self):
+        super().setUp()
+        from core.models import Vendedor
+
+        self.juan = Vendedor.objects.create(nombre="Juan", tipo="REPARTIDOR", pin_acceso="1234")
+        self.salida = timezone.now() - timedelta(hours=5)
+        self.carga = Carga.objects.create(conductor=self.juan, estado="EN_RUTA", salio_a_ruta_en=self.salida)
+        self.f1 = self.factura("A-1", carga=self.carga, cargada_en=self.salida)
+        self.otro = Cliente.objects.create(codigo="C2", nombre="Farmacia Dos", latitud=Decimal("12.100000"), longitud=Decimal("-86.250000"))
+        self.f2 = Factura.objects.create(numero_factura="A-2", cliente=self.otro, total=Decimal("115"),
+                                         fecha_emision=self.hoy, modalidad_pago=self.contado,
+                                         carga=self.carga, cargada_en=self.salida)
+        FacturaDetalle.objects.create(factura=self.f2, producto=self.producto, cantidad_facturada=Decimal("10"),
+                                      precio_unitario=Decimal("10"), subtotal=Decimal("100"), iva=Decimal("15"))
+
+    def entregar(self, factura, gps=None, cuando=None):
+        from core.entregas import registrar_entrega
+        from core.tiempos import guardar_gps, leer_gps
+
+        linea = factura.lineas.first()
+        e = registrar_entrega(factura=factura, repartidor=self.juan, carga=self.carga,
+                              cantidades_entregadas={linea.id: "10"})
+        if cuando:
+            Entrega.objects.filter(pk=e.pk).update(fecha_entrega=cuando)
+            e.refresh_from_db()
+        guardar_gps(e, leer_gps(gps or {}))
+        return e
+
+    def test_gps_aprende_y_compara_ubicacion(self):
+        from core.tiempos import indicador_gps
+
+        # Cliente sin ubicación: la primera entrega con buena señal la guarda.
+        e1 = self.entregar(self.f1, {"gps_estado": "OK", "gps_latitud": "12.136389", "gps_longitud": "-86.251389", "gps_precision": "15"})
+        self.cliente.refresh_from_db()
+        self.assertEqual(self.cliente.latitud, Decimal("12.136389"))
+        self.assertEqual(indicador_gps(e1)["codigo"], "PRIMERA")
+        # Cliente con ubicación: a ~4.4 km queda "lejos".
+        e2 = self.entregar(self.f2, {"gps_estado": "OK", "gps_latitud": "12.140000", "gps_longitud": "-86.250000", "gps_precision": "20"})
+        ind = indicador_gps(e2)
+        self.assertEqual(ind["codigo"], "LEJOS")
+        self.assertGreater(ind["distancia"], 4000)
+        self.assertIn("km", ind["texto"])
+
+    def test_gps_cerca_denegado_y_datos_malos(self):
+        from core.tiempos import indicador_gps, leer_gps
+
+        e = self.entregar(self.f2, {"gps_estado": "OK", "gps_latitud": "12.101000", "gps_longitud": "-86.250000", "gps_precision": "30"})
+        self.assertEqual(indicador_gps(e)["codigo"], "EN_CLIENTE")  # ~110 m
+        self.assertEqual(leer_gps({"gps_estado": "DENEGADO"})["estado"], "DENEGADO")
+        self.assertEqual(leer_gps({"gps_estado": "OK", "gps_latitud": "999", "gps_longitud": "1"})["estado"], "NO_DISPONIBLE")
+        self.assertEqual(leer_gps({"gps_estado": "cualquier cosa"})["estado"], "NO_DISPONIBLE")
+        self.assertEqual(leer_gps({}, desde_oficina=True)["estado"], "OFICINA")
+
+    def test_tiempos_de_la_carga(self):
+        from core.tiempos import registrar_llegada, tiempos_de_la_carga
+
+        t0 = self.salida
+        registrar_llegada(self.carga, self.cliente, cuando=t0 + timedelta(minutes=30))
+        self.entregar(self.f1, cuando=t0 + timedelta(minutes=50))
+        registrar_llegada(self.carga, self.otro, cuando=t0 + timedelta(minutes=80))
+        self.entregar(self.f2, cuando=t0 + timedelta(minutes=95))
+        # Un segundo "Llegué" al mismo cliente no cambia la primera hora.
+        registrar_llegada(self.carga, self.otro, cuando=t0 + timedelta(minutes=99))
+        self.carga.ruta_terminada_en = t0 + timedelta(hours=3)
+        self.carga.save()
+
+        t = tiempos_de_la_carga(self.carga)
+        self.assertEqual(t["total"], timedelta(hours=3))
+        self.assertEqual(t["hasta_primer_cliente"], timedelta(minutes=30))
+        self.assertEqual([p["cliente"].codigo for p in t["paradas"]], ["C1", "C2"])
+        self.assertEqual(t["paradas"][0]["en_cliente"], timedelta(minutes=20))
+        self.assertEqual(t["paradas"][1]["en_cliente"], timedelta(minutes=15))
+        self.assertEqual(t["paradas"][1]["viaje"], timedelta(minutes=30))  # 50 → 80
+        self.assertEqual(t["promedio_en_cliente"], timedelta(minutes=17, seconds=30))
+        self.assertEqual(t["ultimo_a_fin"], timedelta(minutes=85))
+        self.assertEqual(t["sin_llegada"], 0)
+
+    def test_corregir_horas_deja_registro(self):
+        from core.models import CorreccionHora
+        from core.tiempos import CorreccionError, corregir_horas
+
+        e = self.entregar(self.f1, cuando=self.salida + timedelta(hours=1))
+        admin = User.objects.create_user("ofi", password="x", is_staff=True)
+        with self.assertRaises(CorreccionError):
+            corregir_horas(self.carga, usuario=admin, motivo="", salida=self.salida)
+        with self.assertRaises(CorreccionError):
+            corregir_horas(self.carga, usuario=admin, motivo="x", entregas={e.id: self.salida - timedelta(hours=1)})
+        nueva = self.salida - timedelta(minutes=10)
+        n = corregir_horas(self.carga, usuario=admin, motivo="Olvidó marcar la salida", salida=nueva,
+                           entregas={e.id: e.fecha_entrega})  # sin cambio: no cuenta
+        self.assertEqual(n, 1)
+        self.carga.refresh_from_db()
+        self.assertEqual(self.carga.salio_a_ruta_en, nueva)
+        c = CorreccionHora.objects.get()
+        self.assertEqual((c.campo, c.usuario, c.valor_anterior), ("SALIDA", admin, self.salida))
+
+    def test_flujo_del_repartidor_en_el_celular(self):
+        from core.models import ParadaCliente
+
+        s = self.client.session
+        s["entrega_carga_id"] = self.carga.id
+        s.save()
+        url = reverse("entregas_captura", args=[self.carga.id, self.f1.id])
+        r = self.client.get(url)
+        self.assertContains(r, "Llegué al cliente")
+        r = self.client.post(reverse("entregas_llegue", args=[self.carga.id, self.f1.id]))
+        self.assertTrue(r.json()["ok"])
+        self.assertContains(self.client.get(url), "Llegaste a este cliente")
+        linea = self.f1.lineas.first()
+        self.client.post(url, {f"ent_{linea.id}": "10", "gps_estado": "OK", "gps_latitud": "12.1",
+                               "gps_longitud": "-86.2", "gps_precision": "12", "documento_cliente": "ORIGINAL"})
+        e = Entrega.objects.get(factura=self.f1)
+        self.assertEqual(e.gps_estado, "OK")
+        # Segunda factura: "Llegué" sin señal → la hora llega con la entrega.
+        hora_cel = self.salida + timedelta(hours=2)
+        linea2 = self.f2.lineas.first()
+        self.client.post(reverse("entregas_captura", args=[self.carga.id, self.f2.id]),
+                         {f"ent_{linea2.id}": "10", "gps_estado": "DENEGADO",
+                          "llegada_ts": str(int(hora_cel.timestamp() * 1000))})
+        p = ParadaCliente.objects.get(carga=self.carga, cliente=self.otro)
+        self.assertTrue(p.llegada_sin_senal)
+        self.assertEqual(int(p.llegada_en.timestamp()), int(hora_cel.timestamp()))
+        r = self.client.get(reverse("entregas_lista", args=[self.carga.id]))
+        self.assertContains(r, "Salida ")
+        self.assertContains(r, "Entregó ")
+
+    def test_cierre_y_reporte_muestran_horas(self):
+        from core.tiempos import registrar_llegada
+
+        registrar_llegada(self.carga, self.cliente)
+        self.entregar(self.f1, {"gps_estado": "OK", "gps_latitud": "12.1", "gps_longitud": "-86.2", "gps_precision": "10"})
+        admin = User.objects.create_superuser("jefe", password="x")
+        self.client.force_login(admin)
+        r = self.client.get(reverse("admin:core_carga_cierre", args=[self.carga.id]))
+        self.assertContains(r, "Horas y tiempos de la ruta")
+        self.assertContains(r, "Corregir horas")
+        r = self.client.get(reverse("admin:core_carga_horas", args=[self.carga.id]))
+        self.assertEqual(r.status_code, 200)
+        r = self.client.post(reverse("admin:core_carga_horas", args=[self.carga.id]), {
+            "salida": timezone.localtime(self.salida - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M"),
+            "motivo": "Prueba",
+        })
+        self.assertRedirects(r, reverse("admin:core_carga_cierre", args=[self.carga.id]))
+        self.assertContains(self.client.get(reverse("admin:core_carga_cierre", args=[self.carga.id])), "Horas corregidas por oficina")
+        r = self.client.get(reverse("tablero_analisis"), {"desde": (self.hoy - timedelta(days=1)).isoformat()})
+        self.assertContains(r, "GPS en el cliente")

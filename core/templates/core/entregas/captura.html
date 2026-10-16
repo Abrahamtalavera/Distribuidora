@@ -16,6 +16,25 @@
 <form method="post" id="form-captura">
   {% csrf_token %}
 
+  {# Cambio #22: llegada al cliente y GPS #}
+  <input type="hidden" name="gps_estado" id="gpsEstado" value="">
+  <input type="hidden" name="gps_latitud" id="gpsLat" value="">
+  <input type="hidden" name="gps_longitud" id="gpsLng" value="">
+  <input type="hidden" name="gps_precision" id="gpsPrec" value="">
+  <input type="hidden" name="llegada_ts" id="llegadaTs" value="">
+  {% if pide_llegada %}
+  <div class="seccion llegada" id="bloqueLlegada" data-url="{% url 'entregas_llegue' carga.id factura.id %}" data-marcada="{% if parada %}1{% else %}0{% endif %}">
+    {% if parada %}
+      <div class="llegada-ok">Llegaste a este cliente a las <b>{{ parada.llegada_en|time:"H:i" }}</b></div>
+    {% else %}
+      <button type="button" class="btn-llegue" id="btnLlegue">Llegué al cliente</button>
+      <div class="llegada-ok oculto" id="llegadaOk"></div>
+      <div class="detalle-muted" id="llegadaAyuda">Tócalo al llegar, antes de descargar. Después podrás guardar la entrega.</div>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% if pide_gps %}<div class="gps-estado" id="gpsTexto">Ubicación: buscando…</div>{% endif %}
+
   <div class="seccion factura-header-info">
     <div class="linea"><span class="label">Cliente</span><span>{{ factura.cliente.nombre }}</span></div>
     <div class="linea"><span class="label">Municipio</span><span>{{ factura.cliente.municipio }}</span></div>
@@ -136,11 +155,136 @@
 
 {% block barra_inferior %}
 <div class="barra-inferior">
-  <button class="btn-guardar" type="submit" form="form-captura">Guardar entrega</button>
+  <button class="btn-guardar" type="submit" form="form-captura" id="btnGuardar">Guardar entrega</button>
 </div>
 {% endblock %}
 
 {% block scripts %}
+<style>
+  .llegada { text-align:center; }
+  .btn-llegue { width:100%; min-height:52px; border:none; border-radius:10px; background:var(--warn); color:#fff; font-size:17px; font-weight:700; font-family:inherit; cursor:pointer; }
+  .btn-llegue:disabled { opacity:.6; }
+  .llegada-ok { font-size:15px; color:var(--ok); padding:4px 0; }
+  .gps-estado { font-size:12px; color:var(--muted); margin:-4px 2px 12px; }
+  .gps-estado.ok { color:var(--ok); }
+  .gps-estado.mal { color:#8a5200; }
+  .btn-guardar:disabled { background:#9fb3bd; }
+</style>
+<script>
+(function () {
+  "use strict";
+  // Cambio #22: botón "Llegué" y ubicación GPS. Nada de esto impide
+  // guardar la entrega si el celular no da la ubicación.
+  var form = document.getElementById("form-captura");
+  var btnGuardar = document.getElementById("btnGuardar");
+  var bloque = document.getElementById("bloqueLlegada");
+  var btnLlegue = document.getElementById("btnLlegue");
+  var gpsTexto = document.getElementById("gpsTexto");
+  var pideGps = !!gpsTexto;
+  var gps = { listo: !pideGps, estado: "", lat: "", lng: "", prec: null };
+
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+  function horaLocal(d) { return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
+  function csrf() { var el = form.querySelector("[name=csrfmiddlewaretoken]"); return el ? el.value : ""; }
+
+  var faltaLlegada = bloque && bloque.dataset.marcada !== "1";
+  function textoGuardar() {
+    if (faltaLlegada) { btnGuardar.disabled = true; btnGuardar.textContent = "Primero toca «Llegué al cliente»"; }
+    else { btnGuardar.disabled = false; btnGuardar.textContent = "Guardar entrega"; }
+  }
+  textoGuardar();
+
+  if (btnLlegue) {
+    btnLlegue.addEventListener("click", function () {
+      var ahora = new Date();
+      btnLlegue.disabled = true;
+      var ok = document.getElementById("llegadaOk");
+      function marcar(hora, sinSenal) {
+        btnLlegue.classList.add("oculto");
+        document.getElementById("llegadaAyuda").classList.add("oculto");
+        ok.innerHTML = "Llegaste a las <b>" + hora + "</b>" + (sinSenal ? " (sin señal: se enviará al guardar)" : "");
+        ok.classList.remove("oculto");
+        faltaLlegada = false;
+        textoGuardar();
+      }
+      var datos = new FormData();
+      datos.append("csrfmiddlewaretoken", csrf());
+      fetch(bloque.dataset.url, { method: "POST", body: datos, credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d.ok) { marcar(d.hora, false); }
+          else { btnLlegue.disabled = false; alertaSuave(d.error || "No se pudo marcar la llegada."); }
+        })
+        .catch(function () {
+          // Sin señal: el celular guarda la hora y la manda con la entrega.
+          document.getElementById("llegadaTs").value = String(ahora.getTime());
+          marcar(horaLocal(ahora), true);
+        });
+    });
+  }
+  function alertaSuave(texto) {
+    var a = document.createElement("div");
+    a.className = "aviso error"; a.textContent = texto;
+    form.insertBefore(a, form.firstChild); window.scrollTo(0, 0);
+  }
+
+  function ponerGps() {
+    document.getElementById("gpsEstado").value = gps.estado;
+    document.getElementById("gpsLat").value = gps.lat;
+    document.getElementById("gpsLng").value = gps.lng;
+    document.getElementById("gpsPrec").value = gps.prec === null ? "" : gps.prec;
+  }
+  if (pideGps) {
+    if (!navigator.geolocation) {
+      gps = { listo: true, estado: "NO_DISPONIBLE", lat: "", lng: "", prec: null };
+      gpsTexto.textContent = "Este celular no da la ubicación. La entrega se guarda igual.";
+      gpsTexto.className = "gps-estado mal";
+    } else {
+      navigator.geolocation.watchPosition(function (pos) {
+        var prec = Math.round(pos.coords.accuracy);
+        if (gps.estado === "OK" && gps.prec !== null && prec >= gps.prec) return;
+        gps = { listo: true, estado: "OK", lat: pos.coords.latitude.toFixed(6), lng: pos.coords.longitude.toFixed(6), prec: prec };
+        gpsTexto.textContent = "Ubicación lista (±" + prec + " m)";
+        gpsTexto.className = "gps-estado ok";
+        ponerGps();
+      }, function (err) {
+        if (gps.estado === "OK") return;
+        gps = { listo: true, estado: err.code === 1 ? "DENEGADO" : "NO_DISPONIBLE", lat: "", lng: "", prec: null };
+        gpsTexto.textContent = err.code === 1
+          ? "No diste permiso de ubicación. La entrega se guarda igual, pero oficina lo verá."
+          : "No se pudo obtener la ubicación. La entrega se guarda igual.";
+        gpsTexto.className = "gps-estado mal";
+        ponerGps();
+      }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 });
+    }
+  }
+
+  var enviando = false;
+  form.addEventListener("submit", function (e) {
+    if (faltaLlegada) { e.preventDefault(); return; }
+    if (enviando) return;
+    if (!pideGps) return;
+    ponerGps();
+    if (gps.listo) { enviando = true; btnGuardar.disabled = true; return; }
+    // Espera unos segundos a la ubicación; si no llega, guarda igual.
+    e.preventDefault();
+    enviando = true;
+    btnGuardar.disabled = true;
+    btnGuardar.textContent = "Obteniendo ubicación…";
+    var espera = 0;
+    var t = setInterval(function () {
+      espera += 500;
+      if (gps.listo || espera >= 6000) {
+        clearInterval(t);
+        if (!gps.listo) { gps.estado = "NO_DISPONIBLE"; }
+        ponerGps();
+        btnGuardar.textContent = "Guardando…";
+        form.submit();
+      }
+    }, 500);
+  });
+})();
+</script>
 <script>
 (function () {
   "use strict";

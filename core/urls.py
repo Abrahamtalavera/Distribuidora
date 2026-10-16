@@ -19,6 +19,12 @@ urlpatterns = [
         views_entregas.entregas_captura_view,
         name="entregas_captura",
     ),
+    # Cambio #22: llegada al cliente.
+    path(
+        "entregas/carga/<int:carga_id>/factura/<int:factura_id>/llegue/",
+        views_entregas.entregas_llegue_view,
+        name="entregas_llegue",
+    ),
     # Cambio #17: marcar facturas como cargadas y salir a ruta.
     path(
         "entregas/carga/<int:carga_id>/factura/<int:factura_id>/cargar/",

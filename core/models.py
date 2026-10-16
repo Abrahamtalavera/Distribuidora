@@ -302,6 +302,17 @@ class Cliente(models.Model):
     modalidad_pago_default = models.ForeignKey(
         ModalidadPago, null=True, blank=True, on_delete=models.SET_NULL
     )
+    # Cambio #22: ubicación del cliente para el indicador de GPS de las
+    # entregas. Se toma sola de la primera entrega con buena señal, o se
+    # escribe a mano en el admin.
+    latitud = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitud = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    ubicacion_origen = models.CharField(
+        max_length=120,
+        blank=True,
+        verbose_name="Origen de la ubicación",
+        help_text="De dónde salió la ubicación (primera entrega con GPS, o escrita a mano).",
+    )
     limite_credito = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     dias_credito = models.IntegerField(default=0)
     activo = models.BooleanField(default=True)
@@ -552,6 +563,23 @@ class Entrega(models.Model):
     )
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default="CONFIRMADA")
 
+    # --- Cambio #22: ubicación GPS del celular al registrar la entrega ------
+    GPS_CHOICES = [
+        ("OK", "Ubicación registrada"),
+        ("DENEGADO", "El repartidor no permitió la ubicación"),
+        ("NO_DISPONIBLE", "El celular no dio la ubicación"),
+        ("OFICINA", "Registrada desde oficina"),
+    ]
+    gps_estado = models.CharField(
+        max_length=15, choices=GPS_CHOICES, blank=True, verbose_name="GPS",
+        help_text="Vacío en las entregas anteriores al Cambio #22.",
+    )
+    gps_latitud = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    gps_longitud = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    gps_precision = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Precisión GPS (m)"
+    )
+
     class Meta:
         verbose_name_plural = "Entregas"
 
@@ -731,3 +759,68 @@ class ConsignacionDetalle(models.Model):
     class Meta:
         verbose_name = "Línea de consignación"
         verbose_name_plural = "Líneas de consignación"
+
+
+class ParadaCliente(models.Model):
+    """
+    Cambio #22: llegada del repartidor a un cliente dentro de una carga. Se
+    marca con el botón "Llegué" (una vez por cliente, aunque tenga varias
+    facturas en la carga). La salida no se guarda aparte: es la hora de la
+    última entrega registrada a ese cliente en la carga.
+    """
+
+    carga = models.ForeignKey(Carga, on_delete=models.CASCADE, related_name="paradas")
+    cliente = models.ForeignKey("Cliente", on_delete=models.CASCADE, related_name="paradas")
+    llegada_en = models.DateTimeField(verbose_name="Llegada")
+    llegada_sin_senal = models.BooleanField(
+        default=False,
+        verbose_name="Marcada sin señal",
+        help_text="El celular guardó la hora y la envió después, junto con la entrega.",
+    )
+
+    class Meta:
+        verbose_name = "Llegada a cliente"
+        verbose_name_plural = "Llegadas a clientes"
+        unique_together = ("carga", "cliente")
+        ordering = ["llegada_en"]
+
+    def __str__(self):
+        return f"{self.cliente} · {self.carga.codigo_reporte}"
+
+
+class CorreccionHora(models.Model):
+    """
+    Cambio #22: registro de cada hora corregida por oficina (salida a ruta,
+    fin de ruta o entrega de una factura). Las horas las pone el sistema; si
+    alguna vez hay que cambiar una, queda aquí quién, cuándo y por qué.
+    """
+
+    CAMPO_CHOICES = [
+        ("SALIDA", "Salida a ruta"),
+        ("FIN", "Fin de ruta"),
+        ("LLEGADA", "Llegada a cliente"),
+        ("ENTREGA", "Entrega de factura"),
+    ]
+    carga = models.ForeignKey(Carga, on_delete=models.CASCADE, related_name="correcciones_hora")
+    entrega = models.ForeignKey(
+        "Entrega", null=True, blank=True, on_delete=models.CASCADE, related_name="correcciones_hora"
+    )
+    parada = models.ForeignKey(
+        ParadaCliente, null=True, blank=True, on_delete=models.CASCADE, related_name="correcciones_hora"
+    )
+    campo = models.CharField(max_length=10, choices=CAMPO_CHOICES)
+    valor_anterior = models.DateTimeField(null=True, blank=True)
+    valor_nuevo = models.DateTimeField()
+    motivo = models.CharField(max_length=200)
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    corregido_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Corrección de hora"
+        verbose_name_plural = "Correcciones de hora"
+        ordering = ["-corregido_en"]
+
+    def __str__(self):
+        return f"{self.get_campo_display()} · {self.carga.codigo_reporte}"

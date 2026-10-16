@@ -7,6 +7,7 @@
         <tr>
           <th>Nombre</th><th class="r">Facturas</th><th>Entregado (C$)</th><th class="r">Devuelto (C$)</th>
           <th class="r">Con devolución</th><th class="r">Efectividad</th>
+          <th class="r">Tiempo en ruta</th><th class="r">Por cliente</th><th class="r">En cada cliente</th><th class="r">GPS en el cliente</th>
         </tr>
         {% for f in filas %}
         <tr>
@@ -20,6 +21,10 @@
               <span class="ef {% if f.efectividad >= 95 %}alta{% elif f.efectividad >= 85 %}media{% else %}baja{% endif %}">{{ f.efectividad|stringformat:".1f" }}%</span>
             {% else %}—{% endif %}
           </td>
+          <td class="r">{{ f.tiempos.total|duracion }}</td>
+          <td class="r">{{ f.tiempos.por_cliente|duracion }}</td>
+          <td class="r">{{ f.tiempos.en_cliente|duracion }}</td>
+          <td class="r">{% if f.gps_pct is not None %}<span class="ef {% if f.gps_pct >= 90 %}alta{% elif f.gps_pct >= 75 %}media{% else %}baja{% endif %}">{{ f.gps_pct|stringformat:".0f" }}%</span><div class="detalle">{{ f.gps_lejos }} lejos de {{ f.gps_total }}</div>{% else %}—{% endif %}</td>
         </tr>
         {% endfor %}
       </table>

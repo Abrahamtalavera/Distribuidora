@@ -74,3 +74,11 @@ def plano_cant(valor):
         return ""
     texto = f"{Decimal(valor):.3f}".rstrip("0").rstrip(".")
     return texto or "0"
+
+
+@register.filter
+def duracion(valor):
+    """Cambio #22: timedelta → '2 h 05 min' / '35 min' / '—'."""
+    from core.tiempos import texto_duracion
+
+    return texto_duracion(valor if valor != "" else None)

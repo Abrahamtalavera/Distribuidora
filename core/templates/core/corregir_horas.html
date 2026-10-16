@@ -1,0 +1,62 @@
+{% extends "core/bodega/base.html" %}
+{% block titulo %}Corregir horas · {{ carga.codigo_reporte }}{% endblock %}
+{% block estilos %}
+<style>
+  .in-hora { padding:7px 8px; border:1px solid #c9c9c9; border-radius:6px; font-size:14px; font-family:inherit; }
+  .volver { max-width:1000px; margin:0 auto 10px; font-size:13px; }
+  .volver a { color:var(--primary); text-decoration:none; }
+</style>
+{% endblock %}
+{% block cuerpo %}
+<div class="volver"><a href="{% url 'admin:core_carga_cierre' carga.pk %}">&larr; Volver al cierre de la carga</a></div>
+<div class="desk">
+  <div class="desk-head">
+    <div>
+      <h1>Corregir horas de {{ carga.codigo_reporte }}</h1>
+      <div class="sub">{{ carga.ruta|default:"Sin ruta" }} · {{ carga.fecha_planeada|date:"d/m/Y" }} · {{ carga.conductor|default:"Sin repartidor" }}</div>
+    </div>
+  </div>
+  <div class="desk-body">
+    <div class="aviso warn">Las horas las pone el sistema. Cambia solo la que esté mal: cada cambio queda registrado con tu usuario y el motivo, y se ve en el cierre y en el reporte impreso.</div>
+    {% if error %}<div class="aviso error">{{ error }}</div>{% endif %}
+    <form method="post">
+      {% csrf_token %}
+      <div class="seccion">
+        <h3>Ruta</h3>
+        <table>
+          <tr><td>Salida a ruta</td><td class="r"><input class="in-hora" type="datetime-local" name="salida" value="{{ salida }}" aria-label="Salida a ruta"></td></tr>
+          <tr><td>Fin de ruta</td><td class="r"><input class="in-hora" type="datetime-local" name="fin" value="{{ fin }}" aria-label="Fin de ruta"></td></tr>
+        </table>
+      </div>
+      {% if paradas %}
+      <div class="seccion">
+        <h3>Llegada a cada cliente</h3>
+        <table>
+          {% for p in paradas %}
+          <tr><td>{{ p.cliente.nombre }}{% if p.llegada_sin_senal %} <span class="detalle">(marcada sin señal)</span>{% endif %}</td><td class="r"><input class="in-hora" type="datetime-local" name="llegada_{{ p.id }}" value="{{ p.valor }}" aria-label="Llegada a {{ p.cliente.nombre }}"></td></tr>
+          {% endfor %}
+        </table>
+      </div>
+      {% endif %}
+      {% if entregas %}
+      <div class="seccion">
+        <h3>Entrega de cada factura</h3>
+        <table>
+          {% for e in entregas %}
+          <tr><td><b>{{ e.factura.numero_factura }}</b> · {{ e.factura.cliente.nombre }}</td><td class="r"><input class="in-hora" type="datetime-local" name="entrega_{{ e.id }}" value="{{ e.valor }}" aria-label="Entrega de {{ e.factura.numero_factura }}"></td></tr>
+          {% endfor %}
+        </table>
+      </div>
+      {% endif %}
+      <div class="campo">
+        <label for="motivo">Motivo de la corrección (obligatorio)</label>
+        <input id="motivo" type="text" name="motivo" maxlength="200" value="{{ motivo }}" required placeholder="Ej. el repartidor olvidó marcar la salida">
+      </div>
+      <div class="acciones">
+        <a class="btn-sec" href="{% url 'admin:core_carga_cierre' carga.pk %}">Cancelar</a>
+        <button class="btn-pri" type="submit">Guardar correcciones</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

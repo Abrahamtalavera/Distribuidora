@@ -11,7 +11,7 @@ from core import models
 from core.forms import AgruparEnCargaForm
 from core.paquetes import facturas_sin_paquetes_costo, leer_paquetes_costo
 from core.views import importar_facturas_view, imprimir_carga_view
-from core.views_cierre import cierre_carga_view
+from core.views_cierre import cierre_carga_view, corregir_horas_view
 
 
 class FacturaDetalleInline(admin.TabularInline):
@@ -296,6 +296,14 @@ class ClienteAdmin(admin.ModelAdmin):
     list_filter = ("municipio", "canal", "territorio", "activo")
     search_fields = ("codigo", "nombre")
 
+    # Cambio #22: si oficina escribe la ubicación a mano, queda anotado.
+    def save_model(self, request, obj, form, change):
+        if {"latitud", "longitud"} & set(form.changed_data) and "ubicacion_origen" not in form.changed_data:
+            obj.ubicacion_origen = (
+                f"Escrita a mano por {request.user.get_username()}" if obj.latitud is not None else ""
+            )
+        super().save_model(request, obj, form, change)
+
 
 @admin.register(models.Producto)
 class ProductoAdmin(admin.ModelAdmin):
@@ -428,6 +436,12 @@ class CargaAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(cierre_carga_view),
                 name="core_carga_cierre",
             ),
+            # Cambio #22: corregir horas (queda registrado quién y por qué).
+            path(
+                "<int:pk>/horas/",
+                self.admin_site.admin_view(corregir_horas_view),
+                name="core_carga_horas",
+            ),
         ]
         return custom + urls
 
@@ -468,6 +482,7 @@ class EntregaAdmin(admin.ModelAdmin):
         "id",
         "factura",
         "fecha_entrega",
+        "gps_estado",
         "tipo_entrega",
         "repartidor",
         "motivo_devolucion_general",
@@ -479,10 +494,39 @@ class EntregaAdmin(admin.ModelAdmin):
         "tipo_entrega",
         "estado",
         "documento_cliente",
+        "gps_estado",
         "motivo_devolucion_general__area_responsable",
     )
     search_fields = ("factura__numero_factura", "documento_devolucion")
     inlines = [EntregaDetalleInline]
+    readonly_fields = ("fecha_entrega", "gps_estado", "gps_latitud", "gps_longitud", "gps_precision", "mapa")
+    actions = ["usar_ubicacion_para_cliente"]
+
+    @admin.display(description="Mapa")
+    def mapa(self, obj):
+        from django.utils.html import format_html
+
+        from core.tiempos import url_mapa
+
+        if obj.gps_latitud is None:
+            return "—"
+        return format_html('<a href="{}" target="_blank" rel="noopener">Ver en el mapa</a>', url_mapa(obj.gps_latitud, obj.gps_longitud))
+
+    @admin.action(description="Usar la ubicación GPS de esta entrega como la del cliente")
+    def usar_ubicacion_para_cliente(self, request, queryset):
+        hechos = 0
+        for entrega in queryset.select_related("factura__cliente"):
+            if entrega.gps_latitud is None:
+                continue
+            cliente = entrega.factura.cliente
+            cliente.latitud = entrega.gps_latitud
+            cliente.longitud = entrega.gps_longitud
+            cliente.ubicacion_origen = (
+                f"Entrega {entrega.factura.numero_factura}, elegida por {request.user.get_username()}"
+            )
+            cliente.save(update_fields=["latitud", "longitud", "ubicacion_origen"])
+            hechos += 1
+        self.message_user(request, f"Ubicación actualizada en {hechos} cliente{'s' if hechos != 1 else ''}.")
 
 
 class PlanPagoInline(admin.TabularInline):
@@ -528,3 +572,32 @@ class ConsignacionAdmin(admin.ModelAdmin):
 
 # Cambio #19: el inicio del admin muestra el acceso al tablero de operación.
 admin.site.index_template = "admin/index_sol_maya.html"
+
+
+# Cambio #22: llegadas a clientes y registro de horas corregidas (solo lectura).
+@admin.register(models.ParadaCliente)
+class ParadaClienteAdmin(admin.ModelAdmin):
+    list_display = ("carga", "cliente", "llegada_en", "llegada_sin_senal")
+    list_filter = ("llegada_sin_senal",)
+    search_fields = ("cliente__nombre", "cliente__codigo")
+    raw_id_fields = ("carga", "cliente")
+    readonly_fields = ("carga", "cliente", "llegada_en", "llegada_sin_senal")
+
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(models.CorreccionHora)
+class CorreccionHoraAdmin(admin.ModelAdmin):
+    list_display = ("corregido_en", "carga", "campo", "valor_anterior", "valor_nuevo", "usuario", "motivo")
+    list_filter = ("campo",)
+    search_fields = ("motivo", "carga__id")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

@@ -67,11 +67,25 @@
       <div><b>Recorrido</b>{% if r.km_recorrido is not None %}{{ r.km_recorrido|km }} km{% else %}—{% endif %}</div>
     </div>
 
+    <h2>Horas y tiempos de la ruta</h2>
+    {% with t=r.tiempos %}
+    <div class="datos">
+      <div><b>Salida a ruta</b>{% if t.salida %}{{ t.salida|date:"d/m/Y H:i" }}{% else %}—{% endif %}</div>
+      <div><b>Fin de ruta</b>{% if t.fin %}{{ t.fin|date:"d/m/Y H:i" }}{% else %}—{% endif %}</div>
+      <div><b>Tiempo en ruta</b>{{ t.total|duracion }}</div>
+      <div><b>Hasta el primer cliente</b>{{ t.hasta_primer_cliente|duracion }}</div>
+      <div><b>Promedio en cada cliente</b>{{ t.promedio_en_cliente|duracion }}</div>
+      <div><b>Entre clientes (prom. / mayor)</b>{{ t.promedio_viaje|duracion }} / {{ t.mayor_viaje|duracion }}</div>
+      <div><b>GPS en el cliente</b>{{ t.gps_en_cliente }} de {{ t.gps_total }} ({{ t.gps_lejos }} lejos, {{ t.gps_sin }} sin GPS)</div>
+    </div>
+    {% if t.correcciones %}<div class="nota">Horas corregidas por oficina: {% for c in t.correcciones %}{{ c.get_campo_display }}{% if c.entrega %} {{ c.entrega.factura.numero_factura }}{% elif c.parada %} {{ c.parada.cliente.nombre }}{% endif %} → {{ c.valor_nuevo|date:"H:i" }} ({{ c.usuario.get_username|default:"—" }}: {{ c.motivo }}){% if not forloop.last %}; {% endif %}{% endfor %}.</div>{% endif %}
+    {% endwith %}
+
     <h2>Facturas y documentos de pago</h2>
     <table>
       <thead>
         <tr>
-          <th>Factura</th><th>Cliente</th><th>Modalidad</th><th>Resultado</th><th>Dejó</th>
+          <th>Factura</th><th>Cliente</th><th class="r">Llegó → entregó</th><th>GPS</th><th>Modalidad</th><th>Resultado</th><th>Dejó</th>
           <th class="r">Facturado</th><th class="r">Entregado</th><th class="r">Devuelto</th><th class="r">Cobrado</th>{% if carga.pide_paquetes_costo %}<th class="r">Paquetes</th><th class="r">Costo</th>{% endif %}
         </tr>
       </thead>
@@ -80,6 +94,8 @@
         <tr{% if f.pagos %} class="con-pagos"{% endif %}>
           <td><b>{{ f.factura.numero_factura }}</b></td>
           <td>{{ f.factura.cliente.nombre }}</td>
+          <td class="r" style="white-space:nowrap">{% if f.hora %}{% if f.llegada %}{{ f.llegada|time:"H:i" }} → {% endif %}{{ f.hora|time:"H:i" }}{% else %}—{% endif %}</td>
+          <td>{% if f.gps %}{{ f.gps.texto }}{% else %}—{% endif %}</td>
           <td>{% if f.es_contado %}Contado{% else %}{{ f.factura.modalidad_pago.nombre }}{% endif %}</td>
           <td>{{ f.factura.resultado_nombre }}</td>
           <td>{{ f.dejo|default:"—" }}</td>
@@ -92,17 +108,17 @@
         {% if f.pagos %}
         <tr class="pagos">
           <td></td>
-          <td colspan="{% if carga.pide_paquetes_costo %}10{% else %}8{% endif %}">
+          <td colspan="{% if carga.pide_paquetes_costo %}12{% else %}10{% endif %}">
             <span class="pg-t">Pagado con:</span>
             {% for p in f.pagos %}<span class="pg"><b>{{ p.forma }}</b> C$ {{ p.monto|moneda }}{% if p.numero %} · {{ p.etiqueta }} <b>{{ p.numero }}</b>{% endif %}</span>{% endfor %}
           </td>
         </tr>
         {% endif %}
         {% empty %}
-        <tr><td colspan="9">Esta carga no tiene facturas.</td></tr>
+        <tr><td colspan="11">Esta carga no tiene facturas.</td></tr>
         {% endfor %}
         <tr class="tot">
-          <td colspan="5">Total ({{ r.total_facturas }} factura{{ r.total_facturas|pluralize }})</td>
+          <td colspan="7">Total ({{ r.total_facturas }} factura{{ r.total_facturas|pluralize }})</td>
           <td class="r">C$ {{ r.totales.facturado|moneda }}</td>
           <td class="r">C$ {{ r.totales.entregado|moneda }}</td>
           <td class="r">C$ {{ r.totales.devuelto|moneda }}</td>

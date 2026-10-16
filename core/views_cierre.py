@@ -149,3 +149,95 @@ def cierre_carga_view(request, pk):
             "km_escrito": escrito.get("km_final"),
         },
     )
+
+
+# --- Cambio #22: corrección de horas por oficina -----------------------------
+
+
+def _hora_local(valor):
+    """datetime → texto para un <input type="datetime-local">."""
+    from django.utils import timezone
+
+    return timezone.localtime(valor).strftime("%Y-%m-%dT%H:%M") if valor else ""
+
+
+def _leer_hora_local(texto):
+    from datetime import datetime
+
+    from django.utils import timezone
+
+    texto = (texto or "").strip()
+    if not texto:
+        return None
+    try:
+        return timezone.make_aware(datetime.strptime(texto[:16], "%Y-%m-%dT%H:%M"))
+    except ValueError:
+        return None
+
+
+@require_http_methods(["GET", "POST"])
+def corregir_horas_view(request, pk):
+    from core.models import ParadaCliente
+    from core.tiempos import CorreccionError, corregir_horas
+
+    carga = get_object_or_404(Carga.objects.select_related("ruta", "conductor"), pk=pk)
+    paradas = list(ParadaCliente.objects.filter(carga=carga).select_related("cliente"))
+    entregas = list(
+        carga.entregas.filter(estado="CONFIRMADA")
+        .select_related("factura__cliente")
+        .order_by("fecha_entrega", "id")
+    )
+    for p in paradas:
+        p.valor = _hora_local(p.llegada_en)
+    for e in entregas:
+        e.valor = _hora_local(e.fecha_entrega)
+
+    error = None
+    motivo = ""
+    if request.method == "POST":
+        motivo = request.POST.get("motivo", "").strip()
+
+        def cambio(nombre, original):
+            texto = request.POST.get(nombre, "")
+            if texto.strip() == original:
+                return None
+            return _leer_hora_local(texto)
+
+        try:
+            cambiadas = corregir_horas(
+                carga,
+                usuario=request.user,
+                motivo=motivo,
+                salida=cambio("salida", _hora_local(carga.salio_a_ruta_en)),
+                fin=cambio("fin", _hora_local(carga.ruta_terminada_en)),
+                llegadas={
+                    p.id: v for p in paradas if (v := cambio(f"llegada_{p.id}", p.valor)) is not None
+                },
+                entregas={
+                    e.id: v for e in entregas if (v := cambio(f"entrega_{e.id}", e.valor)) is not None
+                },
+            )
+        except CorreccionError as exc:
+            error = str(exc)
+        else:
+            if cambiadas:
+                messages.success(
+                    request, f"Se corrigi{'eron' if cambiadas > 1 else 'ó'} {cambiadas} hora{'s' if cambiadas > 1 else ''}."
+                )
+            else:
+                messages.info(request, "No cambiaste ninguna hora.")
+            return redirect("admin:core_carga_cierre", carga.pk)
+
+    return render(
+        request,
+        "core/corregir_horas.html",
+        {
+            "carga": carga,
+            "salida": request.POST.get("salida") if error else _hora_local(carga.salio_a_ruta_en),
+            "fin": request.POST.get("fin") if error else _hora_local(carga.ruta_terminada_en),
+            "paradas": paradas,
+            "entregas": entregas,
+            "error": error,
+            "motivo": motivo,
+        },
+    )

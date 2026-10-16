@@ -60,6 +60,9 @@
   .btn-danger { background:#fff; color:var(--danger); border:1px solid var(--danger); padding:10px 16px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; }
   .btn-cerrar { background:var(--ok); color:#fff; border:none; padding:11px 22px; border-radius:8px; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; }
   .oculto { display:none !important; }
+  .tiempos-ruta .grid { grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); }
+  .tiempos-ruta .tile .n { font-size:19px; }
+  .tiempos-ruta h3 .corregir { float:right; text-transform:none; letter-spacing:0; font-size:12px; color:var(--primary); }
 </style>
 </head>
 <body>
@@ -90,6 +93,9 @@
       <div class="aviso warn">El repartidor todavía no ha marcado "Terminé mi ruta". Puedes cerrar la carga de todos modos; al cerrar, las facturas sin visitar se liberan.</div>
     {% endif %}
 
+    {% url 'admin:core_carga_horas' carga.pk as enlace_corregir %}
+    {% include "core/_tiempos_ruta.html" %}
+
     <form method="post" id="form-cierre">
       {% csrf_token %}
 
@@ -105,7 +111,7 @@
           <table>
             <thead>
               <tr>
-                <th>Factura</th><th>Cliente</th><th>Modalidad</th><th>Resultado</th><th>Dejó</th>
+                <th>Factura</th><th>Cliente</th><th class="r">Llegó → entregó</th><th>GPS</th><th>Modalidad</th><th>Resultado</th><th>Dejó</th>
                 <th class="r">Facturado</th><th class="r">Entregado</th><th class="r">Devuelto</th><th class="r">Cobrado</th>{% if carga.pide_paquetes_costo %}<th class="r">Paquetes</th><th class="r">Costo</th>{% endif %}
               </tr>
             </thead>
@@ -114,6 +120,8 @@
               <tr>
                 <td><b>{{ f.factura.numero_factura }}</b></td>
                 <td>{{ f.factura.cliente.nombre }}</td>
+                <td class="r" style="white-space:nowrap">{% if f.hora %}{% if f.llegada %}{{ f.llegada|time:"H:i" }} → {% endif %}{{ f.hora|time:"H:i" }}{% else %}—{% endif %}</td>
+                <td>{% if f.gps %}{% if f.gps.mapa %}<a href="{{ f.gps.mapa }}" target="_blank" rel="noopener" class="badge badge-{{ f.gps.css }}" style="text-decoration:none">{{ f.gps.texto }}</a>{% else %}<span class="badge badge-{{ f.gps.css }}">{{ f.gps.texto }}</span>{% endif %}{% else %}—{% endif %}</td>
                 <td>{% if f.es_contado %}<span class="badge badge-contado">Contado</span>{% else %}<span class="badge badge-credito">{{ f.factura.modalidad_pago.nombre }}</span>{% endif %}</td>
                 <td><span class="badge badge-{{ f.factura.resultado_css }}">{{ f.factura.resultado_nombre }}</span></td>
                 <td>{{ f.dejo|default:"—" }}</td>
@@ -124,10 +132,10 @@
               {% if carga.pide_paquetes_costo %}<td class="r">{% if f.paquetes is not None %}{{ f.paquetes }}{% else %}—{% endif %}</td><td class="r">{% if f.costo_flete is not None %}{{ f.costo_flete|moneda }}{% else %}—{% endif %}</td>{% endif %}
               </tr>
               {% empty %}
-              <tr><td colspan="9">Esta carga no tiene facturas.</td></tr>
+              <tr><td colspan="11">Esta carga no tiene facturas.</td></tr>
               {% endfor %}
               <tr class="tot">
-                <td colspan="5">Total ({{ r.total_facturas }} factura{{ r.total_facturas|pluralize }})</td>
+                <td colspan="7">Total ({{ r.total_facturas }} factura{{ r.total_facturas|pluralize }})</td>
                 <td class="r">C$ {{ r.totales.facturado|moneda }}</td>
                 <td class="r">C$ {{ r.totales.entregado|moneda }}</td>
                 <td class="r">C$ {{ r.totales.devuelto|moneda }}</td>

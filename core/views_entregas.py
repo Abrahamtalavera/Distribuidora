@@ -14,6 +14,7 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
 
 from core.entregas import (
@@ -33,7 +34,15 @@ from core.salida import (
     quitar_cargada,
     salir_a_ruta,
 )
-from core.models import Carga, CarteraCobro, Factura, MotivoDevolucion, Pago
+from core.models import Carga, CarteraCobro, Factura, MotivoDevolucion, ParadaCliente, Pago
+from core.tiempos import (
+    guardar_gps,
+    leer_gps,
+    leer_hora_celular,
+    registrar_llegada,
+    texto_duracion,
+    tiempos_de_la_carga,
+)
 
 SESSION_KEY_CARGA = "entrega_carga_id"
 
@@ -137,6 +146,16 @@ def entregas_lista_view(request, carga_id):
     for factura in facturas:
         factura.abrible = puede_capturar and not fase_carga and factura.esta_cargada
 
+    # Cambio #22: hora de salida, de cada entrega y de fin de ruta.
+    tiempos = None if fase_carga else tiempos_de_la_carga(carga)
+    if tiempos:
+        llegadas = {p["cliente"].id: p["llegada"] for p in tiempos["paradas"]}
+        for factura in facturas:
+            datos = tiempos["por_factura"].get(factura.id)
+            factura.hora_entrega = datos["hora"] if datos else None
+            factura.hora_llegada = llegadas.get(factura.cliente_id)
+        tiempos["total_texto"] = texto_duracion(tiempos["total"])
+
     return render(
         request,
         "core/entregas/lista.html",
@@ -155,6 +174,7 @@ def entregas_lista_view(request, carga_id):
             "es_staff": es_staff,
             "puede_capturar": puede_capturar,
             "r": resumen_cierre(carga) if carga.bloqueada_para_repartidor else None,
+            "tiempos": tiempos,
         },
     )
 
@@ -239,8 +259,16 @@ def entregas_captura_view(request, carga_id, factura_id):
                         }
                     )
 
+        # Cambio #22: llegada al cliente. Si el botón "Llegué" no pudo
+        # avisar al servidor (sin señal), la hora viene guardada del celular.
+        if not es_staff:
+            hora_cel = leer_hora_celular(request.POST.get("llegada_ts"), carga)
+            if hora_cel:
+                registrar_llegada(carga, factura.cliente, cuando=hora_cel, sin_senal=True)
+        gps = leer_gps(request.POST, desde_oficina=es_staff)
+
         try:
-            registrar_entrega(
+            entrega = registrar_entrega(
                 factura=factura,
                 repartidor=carga.conductor,
                 cantidades_entregadas=cantidades,
@@ -255,6 +283,7 @@ def entregas_captura_view(request, carga_id, factura_id):
         except RegistroEntregaError as exc:
             messages.error(request, str(exc))
         else:
+            guardar_gps(entrega, gps)
             texto = f"Entrega guardada para la factura {factura.numero_factura}."
             if pagos:
                 total_pagos = sum((p["monto"] for p in pagos), Decimal("0"))
@@ -296,7 +325,27 @@ def entregas_captura_view(request, carga_id, factura_id):
             "pagado_antes_fmt": _moneda(pagado_antes) if pagado_antes else "",
             "formas_pago": Pago.FORMA_CHOICES,
             "max_pagos": MAX_PAGOS,
+            # Cambio #22: llegada al cliente y GPS (el repartidor; oficina no).
+            "pide_llegada": not es_staff,
+            "pide_gps": not es_staff,
+            "parada": ParadaCliente.objects.filter(carga=carga, cliente=factura.cliente).first(),
         },
+    )
+
+
+@require_POST
+def entregas_llegue_view(request, carga_id, factura_id):
+    """Cambio #22: el repartidor toca "Llegué" al llegar al cliente."""
+    carga = _carga_autorizada(request, carga_id)
+    if carga is None:
+        return JsonResponse({"ok": False, "error": "Vuelve a entrar con tu código y PIN."}, status=403)
+    factura = get_object_or_404(Factura.objects.select_related("cliente"), pk=factura_id, carga=carga)
+    if carga.estado != "EN_RUTA":
+        return JsonResponse({"ok": False, "error": "La carga no está en ruta."}, status=400)
+    hora_cel = leer_hora_celular(request.POST.get("llegada_ts"), carga)
+    parada = registrar_llegada(carga, factura.cliente, cuando=hora_cel, sin_senal=bool(hora_cel))
+    return JsonResponse(
+        {"ok": True, "hora": timezone.localtime(parada.llegada_en).strftime("%H:%M")}
     )
 
 
