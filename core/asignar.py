@@ -63,7 +63,9 @@ def agregar_a_carga(destino, facturas, paquetes_costo=None):
     (paquetes, costo)}, obligatorio si la unidad de la carga lo pide.
     Devuelve (agregadas, no_aptas).
     """
-    destino = Carga.objects.select_for_update().select_related("vehiculo").get(pk=destino.pk)
+    # Solo se bloquea la fila de la carga (PostgreSQL no permite bloquear la
+    # unidad, que puede venir vacía, en la misma consulta).
+    destino = Carga.objects.select_for_update(of=("self",)).select_related("vehiculo").get(pk=destino.pk)
     if destino.estado not in ESTADOS_DESTINO:
         raise AsignarError(
             f"{destino.codigo_reporte} está {destino.get_estado_display().lower()}: "
