@@ -135,3 +135,61 @@ def tablero_analisis_view(request):
         }
     )
     return render(request, "core/tablero/analisis.html", contexto)
+
+
+# ---------------------------------------------------------------------------
+# Cambio #24: consulta de Cargas (filtros, resumen y detalle de facturas)
+# ---------------------------------------------------------------------------
+
+
+@tablero_required
+def tablero_cargas_view(request):
+    from core.consulta_cargas import (
+        MAX_CARGAS_LISTADO,
+        MAX_DIAS_LISTADO,
+        listado_cargas,
+        periodo_por_defecto,
+    )
+    from core.models import Carga, Ruta, Vendedor
+
+    desde_def, hasta_def = periodo_por_defecto()
+    desde = _leer_fecha(request.GET.get("desde"), desde_def)
+    hasta = _leer_fecha(request.GET.get("hasta"), hasta_def)
+    if desde > hasta:
+        desde, hasta = hasta, desde
+    aviso = ""
+    if (hasta - desde).days >= MAX_DIAS_LISTADO:
+        desde = hasta.fromordinal(hasta.toordinal() - MAX_DIAS_LISTADO + 1)
+        aviso = f"El período se limitó a {MAX_DIAS_LISTADO} días."
+
+    carga_texto = (request.GET.get("carga") or "").strip()
+    carga_id = _leer_id(carga_texto)
+    ruta_id = _leer_id(request.GET.get("ruta"))
+    conductor_id = _leer_id(request.GET.get("conductor"))
+    estado = request.GET.get("estado", "")
+    if estado not in dict(Carga.ESTADO_CHOICES):
+        estado = ""
+
+    cargas, resumen, recortado = listado_cargas(
+        desde, hasta, carga_id, ruta_id, conductor_id, estado
+    )
+
+    contexto = {
+        "desde": desde,
+        "hasta": hasta,
+        "carga_id": carga_texto,
+        "ruta_id": ruta_id,
+        "conductor_id": conductor_id,
+        "estado": estado,
+        "cargas": cargas,
+        "resumen": resumen,
+        "recortado": recortado,
+        "max_cargas": MAX_CARGAS_LISTADO,
+        "aviso": aviso,
+        "rutas": Ruta.objects.order_by("nombre"),
+        "conductores": Vendedor.objects.filter(tipo="REPARTIDOR").order_by("nombre"),
+        "estados_carga": Carga.ESTADO_CHOICES,
+        "enlaces_admin": request.user.is_staff,
+        "pestana": "cargas",
+    }
+    return render(request, "core/tablero/cargas.html", contexto)

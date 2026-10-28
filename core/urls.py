@@ -59,6 +59,8 @@ urlpatterns = [
     path("tablero/", views_tablero.tablero_view, name="tablero"),
     # Cambio #20: análisis de un período.
     path("tablero/analisis/", views_tablero.tablero_analisis_view, name="tablero_analisis"),
+    # Cambio #24: consulta de Cargas (filtros, resumen y detalle de facturas).
+    path("tablero/cargas/", views_tablero.tablero_cargas_view, name="tablero_cargas"),
     path("tablero/acceso/", views_tablero.TableroLoginView.as_view(), name="tablero_acceso"),
     path("tablero/salir/", views_tablero.tablero_salir_view, name="tablero_salir"),
     # Cambio #21: consulta del equipo de ventas.

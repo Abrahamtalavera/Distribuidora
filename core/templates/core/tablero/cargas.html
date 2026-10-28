@@ -1,0 +1,179 @@
+{% extends "core/bodega/base.html" %}
+{% load formato %}
+{% block titulo %}Consulta de cargas{% endblock %}
+{% block estilos %}
+{% include "core/tablero/_estilos.html" %}
+<style>
+  .filtros { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; padding:12px 14px; border:1px solid var(--border); border-radius:10px; background:#fafbfb; margin-bottom:14px; }
+  .filtros .campo { margin:0; }
+  .filtros label { display:block; font-size:11px; color:var(--muted); text-transform:uppercase; margin-bottom:4px; }
+  .filtros input, .filtros select { padding:8px; border:1px solid #c9c9c9; border-radius:6px; font-size:13px; font-family:inherit; background:#fff; }
+  .filtros .rango { display:flex; align-items:center; gap:6px; }
+  .filtros .rango span { font-size:12px; color:var(--muted); }
+  .filtros #carga { width:90px; }
+  .btn { background:var(--primary); color:#fff; border:none; padding:9px 18px; border-radius:6px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; min-height:38px; }
+  .btn-claro { background:#fff; color:var(--primary-dark); border:1px solid var(--primary); padding:8px 14px; border-radius:6px; font-size:13px; font-weight:600; text-decoration:none; display:inline-block; }
+  .badge-parcial { background:var(--warn-bg); color:#8a5200; }
+  tbody tr.carga-row { cursor:pointer; }
+  tbody tr.carga-row:hover td { background:#f7fafb; }
+  .id-link { display:flex; align-items:center; gap:6px; }
+  .id-link .car { display:inline-block; transition:transform .15s; font-size:10px; color:var(--muted); }
+  .carga-row.expanded .car { transform:rotate(90deg); }
+  .avance-cell { display:flex; align-items:center; gap:8px; justify-content:flex-end; }
+  .avance-bar { width:48px; height:6px; border-radius:4px; background:#e3e6e8; overflow:hidden; flex-shrink:0; }
+  .avance-bar > div { height:100%; background:var(--ok); }
+  .sub-row td { padding:0; background:#f7fafb; }
+  .sub-wrap { padding:12px 16px 16px 44px; }
+  .sub-wrap h5 { margin:0 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); }
+  .sub-table { width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  .sub-table th { font-size:10px; text-transform:uppercase; color:var(--muted); background:#eef3f5; padding:6px 10px; text-align:left; }
+  .sub-table th.r { text-align:right; }
+  .sub-table td { font-size:12.5px; padding:7px 10px; border-top:1px solid #eef3f5; }
+</style>
+{% endblock %}
+
+{% block cuerpo %}
+<div class="desk">
+  <div class="desk-head">
+    <div>
+      <h1>Consulta de cargas</h1>
+      <div class="sub">Filtra Cargas por fecha, ruta, conductor y estado</div>
+    </div>
+    {% include "core/tablero/_usuario.html" %}
+  </div>
+  {% include "core/tablero/_pestanas.html" %}
+
+  <div class="desk-body">
+    <form class="filtros" method="get">
+      <div class="campo">
+        <label for="desde">Fecha planeada</label>
+        <div class="rango">
+          <input id="desde" type="date" name="desde" value="{{ desde|date:'Y-m-d' }}">
+          <span>hasta</span>
+          <input type="date" name="hasta" value="{{ hasta|date:'Y-m-d' }}">
+        </div>
+      </div>
+      <div class="campo">
+        <label for="carga">Id de carga</label>
+        <input id="carga" type="text" name="carga" value="{{ carga_id }}" placeholder="Ej: 54">
+      </div>
+      <div class="campo">
+        <label for="ruta">Ruta</label>
+        <select id="ruta" name="ruta">
+          <option value="">Todas</option>
+          {% for r in rutas %}<option value="{{ r.pk }}" {% if r.pk == ruta_id %}selected{% endif %}>{{ r.nombre }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="campo">
+        <label for="conductor">Conductor</label>
+        <select id="conductor" name="conductor">
+          <option value="">Todos</option>
+          {% for c in conductores %}<option value="{{ c.pk }}" {% if c.pk == conductor_id %}selected{% endif %}>{{ c.nombre }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="campo">
+        <label for="estado">Estado de la ruta</label>
+        <select id="estado" name="estado">
+          <option value="">Todos</option>
+          {% for clave, nombre in estados_carga %}<option value="{{ clave }}" {% if clave == estado %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
+        </select>
+      </div>
+      <button class="btn" type="submit">Buscar</button>
+      <a class="btn-claro" href="{% url 'tablero_cargas' %}">Limpiar</a>
+    </form>
+
+    {% if aviso %}<div class="aviso warn">{{ aviso }}</div>{% endif %}
+    {% if recortado %}<div class="aviso warn">Hay más de {{ max_cargas }} cargas con estos filtros; se muestran las primeras {{ max_cargas }}. Acorta el período u otros filtros.</div>{% endif %}
+
+    <div class="grid">
+      <div class="tile"><div class="t">Cargas encontradas</div><div class="n">{{ resumen.cargas }}</div></div>
+      <div class="tile"><div class="t">Total de facturas</div><div class="n">{{ resumen.facturas }}</div></div>
+      <div class="tile"><div class="t">Completas</div><div class="n" style="color:var(--ok);">{{ resumen.completa }}</div></div>
+      <div class="tile"><div class="t">Con devolución</div><div class="n" style="color:#8a5200;">{{ resumen.devolucion }}</div></div>
+      <div class="tile"><div class="t">No entregadas</div><div class="n" style="color:var(--danger);">{{ resumen.no_entregada }}</div></div>
+      <div class="tile"><div class="t">Sin visitar</div><div class="n" style="color:var(--muted);">{{ resumen.sin_visitar }}</div></div>
+    </div>
+
+    <div class="seccion">
+      {% if cargas %}
+      <div class="scroll">
+        <table>
+          <tr>
+            <th>Id de carga</th><th>Fecha planeada</th><th>Ruta</th><th>Conductor</th><th>Estado de la ruta</th>
+            <th>Hora de salida</th><th class="r">Monto</th><th class="r">Total facturas</th>
+            <th class="r">Completa</th><th class="r">Con devolución</th><th class="r">No entregada</th><th class="r">Sin visitar</th><th class="r">% avance</th>
+          </tr>
+          {% for c in cargas %}
+          <tr class="carga-row" data-target="sub-{{ c.pk }}">
+            <td>
+              <span class="id-link">
+                <span class="car">&#9656;</span>
+                {% if enlaces_admin %}<a class="fila" href="{% url 'admin:core_carga_change' c.pk %}" onclick="event.stopPropagation();">{{ c.codigo_reporte }}</a>{% else %}{{ c.codigo_reporte }}{% endif %}
+              </span>
+            </td>
+            <td>{{ c.fecha_planeada|date:"d/m/Y" }}</td>
+            <td>{{ c.ruta|default:"—" }}</td>
+            <td>{{ c.conductor|default:"—" }}</td>
+            <td><span class="badge {% if c.estado == 'PLANEADA' %}badge-pendiente{% elif c.estado == 'EN_RUTA' %}badge-ruta{% elif c.estado == 'RUTA_TERMINADA' %}badge-terminada{% else %}badge-completa{% endif %}">{{ c.get_estado_display }}</span></td>
+            <td>{{ c.salio_a_ruta_en|date:"H:i"|default:"—" }}</td>
+            <td class="r">C$ {{ c.monto|moneda }}</td>
+            <td class="r">{{ c.total_facturas }}</td>
+            <td class="r" style="color:var(--ok);font-weight:600;">{{ c.completa }}</td>
+            <td class="r" style="color:#8a5200;font-weight:600;">{{ c.devolucion }}</td>
+            <td class="r" style="color:var(--danger);font-weight:600;">{{ c.no_entregada }}</td>
+            <td class="r" style="color:var(--muted);font-weight:600;">{{ c.sin_visitar }}</td>
+            <td class="r">
+              {% if c.avance is not None %}
+                <div class="avance-cell"><div class="avance-bar"><div style="width:{{ c.avance }}%"></div></div><span>{{ c.avance }}%</span></div>
+              {% else %}—{% endif %}
+            </td>
+          </tr>
+          <tr class="sub-row oculto" id="sub-{{ c.pk }}">
+            <td colspan="13">
+              <div class="sub-wrap">
+                <h5>Facturas de {{ c.codigo_reporte }}</h5>
+                {% if c.detalle_facturas %}
+                <table class="sub-table">
+                  <tr><th>No. de factura</th><th>Estado de la factura</th><th>Código de cliente</th><th>Nombre del cliente</th><th class="r">Total de bultos</th><th class="r">Monto total</th></tr>
+                  {% for f in c.detalle_facturas %}
+                  <tr>
+                    <td>{% if enlaces_admin %}<a class="fila" href="{% url 'admin:core_factura_change' f.pk %}">{{ f.numero_factura }}</a>{% else %}{{ f.numero_factura }}{% endif %}</td>
+                    <td><span class="badge badge-{{ f.css }}">{{ f.estado_nombre }}</span></td>
+                    <td>{{ f.cliente_codigo }}</td>
+                    <td>{{ f.cliente_nombre }}</td>
+                    <td class="r">{{ f.bultos|default:"—" }}</td>
+                    <td class="r">C$ {{ f.monto|moneda }}</td>
+                  </tr>
+                  {% endfor %}
+                </table>
+                {% else %}
+                <div class="vacio">Esta carga no tiene facturas activas.</div>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+      {% else %}
+        <div class="vacio">No hay cargas con estos filtros.</div>
+      {% endif %}
+    </div>
+    <div style="font-size:12px;color:var(--muted);">Fechas por fecha planeada de la Carga. Haz clic sobre una fila para ver sus facturas. "Monto" es lo facturado (con IVA), no necesariamente lo ya cobrado. "Total de bultos" es el campo "Paquetes" (Cambio #18); sale vacío en las unidades que no lo piden.</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.carga-row').forEach(function (fila) {
+  fila.addEventListener('click', function () {
+    var sub = document.getElementById(fila.dataset.target);
+    if (!sub) return;
+    var abierta = !sub.classList.contains('oculto');
+    sub.classList.toggle('oculto', abierta);
+    fila.classList.toggle('expanded', !abierta);
+  });
+});
+</script>
+{% endblock %}

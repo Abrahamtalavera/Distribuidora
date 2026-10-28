@@ -589,3 +589,119 @@ class AgregarACargaExistenteTests(TableroBase):
         self.assertEqual(r.status_code, 302)
         f1.refresh_from_db()
         self.assertEqual((f1.carga, f1.paquetes, f1.costo_flete), (self.con_paq, 2, Decimal("50.00")))
+
+
+class ConsultaCargasTests(TableroBase):
+    """Cambio #24: consulta de Cargas para Administración y Supervisores."""
+
+    def setUp(self):
+        super().setUp()
+        from core.models import Ruta, Vendedor
+
+        self.ruta = Ruta.objects.create(nombre="Norte")
+        self.otra_ruta = Ruta.objects.create(nombre="Sur")
+        self.juan = Vendedor.objects.create(nombre="Juan", tipo="REPARTIDOR")
+        self.luis = Vendedor.objects.create(nombre="Luis", tipo="REPARTIDOR")
+
+    def factura_con_resultado(self, numero, carga, entregada="0", devuelta="0", **campos):
+        f = self.factura(numero, carga=carga, **campos)
+        linea = f.lineas.first()
+        linea.cantidad_entregada = Decimal(entregada)
+        linea.cantidad_devuelta = Decimal(devuelta)
+        linea.save()
+        return f
+
+    def test_clasificacion_resumen_y_avance(self):
+        from core.consulta_cargas import listado_cargas
+
+        carga = Carga.objects.create(ruta=self.ruta, conductor=self.juan, fecha_planeada=self.hoy)
+        self.factura_con_resultado("C1", carga, entregada="10")  # Completa
+        self.factura_con_resultado("C2", carga, entregada="8", devuelta="2")  # Con devolución
+        self.factura_con_resultado("C3", carga, entregada="0", devuelta="10")  # No entregada
+        self.factura_con_resultado("C4", carga)  # Sin visitar
+        self.factura_con_resultado("C5", carga, entregada="5")  # Parcial -> cuenta como sin visitar
+        self.factura("C6", carga=carga, estado_factura="ANULADA")  # no cuenta
+
+        cargas, resumen, recortado = listado_cargas(self.hoy, self.hoy)
+        self.assertFalse(recortado)
+        self.assertEqual(len(cargas), 1)
+        c = cargas[0]
+        self.assertEqual(c.total_facturas, 5)
+        self.assertEqual(c.completa, 1)
+        self.assertEqual(c.devolucion, 1)
+        self.assertEqual(c.no_entregada, 1)
+        self.assertEqual(c.sin_visitar, 2)  # sin visitar + parcial
+        self.assertEqual(c.monto, Decimal("575.00"))  # 5 x 115
+        self.assertEqual(c.avance, 40)  # (1 + 1) / 5 = 40%
+        self.assertEqual(resumen["cargas"], 1)
+        self.assertEqual(resumen["facturas"], 5)
+        self.assertEqual(resumen["sin_visitar"], 2)
+
+    def test_carga_sin_facturas_activas(self):
+        from core.consulta_cargas import listado_cargas
+
+        Carga.objects.create(fecha_planeada=self.hoy)
+        cargas, _, _ = listado_cargas(self.hoy, self.hoy)
+        c = cargas[0]
+        self.assertEqual(c.total_facturas, 0)
+        self.assertIsNone(c.avance)
+        self.assertEqual(c.monto, Decimal("0.00"))
+
+    def test_filtros(self):
+        from core.consulta_cargas import listado_cargas
+
+        c1 = Carga.objects.create(ruta=self.ruta, conductor=self.juan, estado="EN_RUTA", fecha_planeada=self.hoy)
+        c2 = Carga.objects.create(ruta=self.otra_ruta, conductor=self.luis, estado="PLANEADA", fecha_planeada=self.hoy)
+        self.factura_con_resultado("F1", c1, entregada="10")
+        self.factura_con_resultado("F2", c2)
+
+        solo_ruta, _, _ = listado_cargas(self.hoy, self.hoy, ruta_id=self.ruta.id)
+        self.assertEqual([c.pk for c in solo_ruta], [c1.pk])
+        solo_conductor, _, _ = listado_cargas(self.hoy, self.hoy, conductor_id=self.luis.id)
+        self.assertEqual([c.pk for c in solo_conductor], [c2.pk])
+        solo_estado, _, _ = listado_cargas(self.hoy, self.hoy, estado="PLANEADA")
+        self.assertEqual([c.pk for c in solo_estado], [c2.pk])
+        por_id, _, _ = listado_cargas(self.hoy, self.hoy, carga_id=c1.id)
+        self.assertEqual([c.pk for c in por_id], [c1.pk])
+        fuera, _, _ = listado_cargas(self.hoy - timedelta(days=10), self.hoy - timedelta(days=5))
+        self.assertEqual(fuera, [])
+
+    def test_pantalla_filtros_permisos_y_detalle(self):
+        carga = Carga.objects.create(
+            ruta=self.ruta, conductor=self.juan, estado="EN_RUTA",
+            salio_a_ruta_en=timezone.now(), fecha_planeada=self.hoy,
+        )
+        self.factura_con_resultado("D-1", carga, entregada="8", devuelta="2")
+
+        # Sin sesión: redirige al acceso.
+        self.assertEqual(self.client.get(reverse("tablero_cargas")).status_code, 302)
+        # Con sesión pero sin el permiso del tablero.
+        self.client.force_login(User.objects.create_user("vend", password="x"))
+        self.assertEqual(self.client.get(reverse("tablero_cargas")).status_code, 403)
+
+        u = User.objects.create_user("sup", password="x")
+        u.groups.add(Group.objects.get(name="Supervisores"))
+        self.client.force_login(u)
+        r = self.client.get(reverse("tablero_cargas"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Consulta de cargas")
+        self.assertContains(r, carga.codigo_reporte)
+        self.assertContains(r, "D-1")
+        self.assertContains(r, "Con devolución")
+        # El enlace a esta pantalla aparece en la pestaña del resto del tablero.
+        self.assertContains(self.client.get(reverse("tablero")), reverse("tablero_cargas"))
+        self.assertContains(self.client.get(reverse("tablero_analisis")), reverse("tablero_cargas"))
+
+    def test_fechas_invertidas_y_filtro_de_carga_no_numerico(self):
+        u = User.objects.create_user("sup2", password="x")
+        u.groups.add(Group.objects.get(name="Supervisores"))
+        self.client.force_login(u)
+        r = self.client.get(
+            reverse("tablero_cargas"),
+            {"desde": "2026-02-01", "hasta": "2026-01-01", "carga": "abc"},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.context["desde"].isoformat(), "2026-01-01")  # se invierten
+        self.assertEqual(r.context["hasta"].isoformat(), "2026-02-01")
+        self.assertEqual(r.context["carga_id"], "abc")  # se conserva en el campo, pero no filtra
+        self.assertEqual(r.context["cargas"], [])
