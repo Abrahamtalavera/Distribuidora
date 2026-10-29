@@ -75,7 +75,7 @@ def _r(valor):
 def _base():
     return Factura.objects.select_related(
         "cliente", "vendedor", "modalidad_pago", "carga__ruta", "carga__conductor",
-        "carga__vehiculo", "cartera",
+        "carga__vehiculo", "cartera", "sucursal",
     ).prefetch_related("lineas")
 
 
@@ -377,7 +377,7 @@ def excel_listado(facturas, titulo):
     hoja["A1"].font = Font(bold=True, size=13)
     hoja.append([])
     encabezados = [
-        "Factura", "Emitida", "Código cliente", "Cliente", "Sucursal", "Municipio",
+        "Factura", "Emitida", "Código cliente", "Cliente", "Sucursal", "Dirección", "Municipio",
         "Canal", "Vendedor", "Modalidad", "Ruta", "Carga", "Repartidor", "Estado",
         "Total", "Entregado", "Devuelto", "Saldo",
     ]
@@ -395,7 +395,8 @@ def excel_listado(facturas, titulo):
                 f.fecha_emision,
                 f.cliente.codigo,
                 f.cliente.nombre,
-                f.cliente.sucursal,
+                f.sucursal.nombre if f.sucursal_id else f.cliente.sucursal,
+                f.sucursal.direccion if f.sucursal_id else "",
                 f.cliente.municipio,
                 f.cliente.canal,
                 f.vendedor.nombre if f.vendedor_id else "",
@@ -412,9 +413,9 @@ def excel_listado(facturas, titulo):
         )
     for fila in hoja.iter_rows(min_row=4):
         fila[1].number_format = "DD/MM/YYYY"
-        for celda in fila[13:17]:
+        for celda in fila[14:18]:
             celda.number_format = "#,##0.00"
-    anchos = [12, 11, 13, 32, 16, 16, 14, 20, 16, 18, 12, 20, 16, 13, 13, 13, 13]
+    anchos = [12, 11, 13, 32, 16, 28, 16, 14, 20, 16, 18, 12, 20, 16, 13, 13, 13, 13]
     for i, ancho in enumerate(anchos, start=1):
         hoja.column_dimensions[get_column_letter(i)].width = ancho
     hoja.freeze_panes = "A4"

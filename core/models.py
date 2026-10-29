@@ -325,6 +325,45 @@ class Cliente(models.Model):
         return f"{self.codigo} - {self.nombre}"
 
 
+class Sucursal(models.Model):
+    """
+    Cambio #25: sucursal (punto de entrega) de un Cliente, cada una con su
+    propia dirección. Un mismo Cliente (código SAP) puede facturar a varias
+    sucursales -- por ejemplo, un supermercado reparte a decenas de tiendas,
+    cada una con su propia dirección de entrega. Antes de este cambio el
+    sistema solo guardaba un texto suelto de "sucursal" y "dirección" en el
+    propio Cliente (Cliente.sucursal / Cliente.direccion), tomado de la
+    PRIMERA factura que llegaba de ese cliente y nunca actualizado después.
+
+    Se carga y actualiza desde el maestro de clientes de SAP (ver
+    core.importador_sucursales), re-importable: no se duplica si se vuelve a
+    subir el mismo archivo o uno más reciente (clave: cliente + nombre).
+    """
+
+    cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name="sucursales")
+    nombre = models.CharField(max_length=150, verbose_name="Nombre de la sucursal")
+    direccion = models.CharField(max_length=255, blank=True)
+    departamento = models.CharField(max_length=100, blank=True)
+    municipio = models.CharField(max_length=100, blank=True)
+    territorio = models.CharField(max_length=100, blank=True)
+    canal = models.CharField(max_length=100, blank=True)
+    cod_grupo = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Código de grupo"
+    )
+    grupo = models.CharField(max_length=100, blank=True, verbose_name="Grupo")
+    activo = models.BooleanField(default=True)
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Sucursal"
+        verbose_name_plural = "Sucursales"
+        ordering = ["cliente__codigo", "nombre"]
+        unique_together = ("cliente", "nombre")
+
+    def __str__(self):
+        return f"{self.nombre} ({self.cliente.codigo})"
+
+
 class Producto(models.Model):
     codigo = models.CharField(max_length=30, unique=True)
     nombre = models.CharField(max_length=200)
@@ -356,6 +395,14 @@ class Factura(models.Model):
     numero_factura = models.CharField(max_length=30, unique=True)
     serie = models.CharField(max_length=30, blank=True)
     cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="facturas")
+    # Cambio #25: sucursal/dirección de entrega de esta factura. Se resuelve
+    # al importar el Excel de facturas, buscando en el catálogo de
+    # Sucursales por cliente + nombre (columna "Sucursal" del Excel). Si no
+    # hay coincidencia, o es una factura de antes de este cambio, queda sin
+    # sucursal.
+    sucursal = models.ForeignKey(
+        "Sucursal", null=True, blank=True, on_delete=models.SET_NULL, related_name="facturas"
+    )
     vendedor = models.ForeignKey(Vendedor, null=True, blank=True, on_delete=models.SET_NULL)
     modalidad_pago = models.ForeignKey(ModalidadPago, on_delete=models.PROTECT)
     fecha_emision = models.DateField()

@@ -118,7 +118,7 @@
             <tr>
               <td>{% if enlaces_admin %}<a href="{% url 'admin:core_factura_change' f.pk %}">{{ f.numero_factura }}</a>{% else %}{{ f.numero_factura }}{% endif %}</td>
               <td>{{ f.cliente.nombre }}</td>
-              <td>{{ f.cliente.sucursal|default:"—" }}</td>
+              <td>{% if f.sucursal %}{{ f.sucursal.nombre }}{% else %}{{ f.cliente.sucursal|default:"—" }}{% endif %}</td>
               <td>{{ f.fecha_sugerida_entrega|date:"d/m/Y" }}</td>
               <td class="r">{{ f.dias_atraso }} día{{ f.dias_atraso|pluralize }}</td>
               <td class="r">{{ f.total|moneda }}</td>

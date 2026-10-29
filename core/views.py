@@ -5,8 +5,12 @@ from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.shortcuts import get_object_or_404, redirect, render
 
-from core.forms import ImportarFacturasForm
+from core.forms import ImportarFacturasForm, ImportarSucursalesForm
 from core.importador import ImportacionError, importar_excel
+from core.importador_sucursales import (
+    ImportacionError as ImportacionSucursalesError,
+    importar_excel as importar_excel_sucursales,
+)
 from core.cierre import resumen_cierre
 from core.models import Carga
 
@@ -48,6 +52,37 @@ def importar_facturas_view(request):
 
 
 @staff_member_required
+def importar_sucursales_view(request):
+    """
+    Cambio #25: subir el maestro de clientes/sucursales de SAP. A diferencia
+    de importar_facturas_view, este SÍ puede actualizar registros existentes
+    (direcciones corregidas, sucursales nuevas) -- ver core.importador_sucursales.
+    """
+    resumen = None
+    if request.method == "POST":
+        form = ImportarSucursalesForm(request.POST, request.FILES)
+        if form.is_valid():
+            archivo = form.cleaned_data["archivo"]
+            try:
+                resumen = importar_excel_sucursales(archivo, nombre_archivo=archivo.name)
+                messages.success(
+                    request,
+                    f"Importación completa: {resumen['sucursales_creadas']} sucursales nuevas, "
+                    f"{resumen['sucursales_actualizadas']} actualizadas.",
+                )
+            except ImportacionSucursalesError as exc:
+                messages.error(request, str(exc))
+    else:
+        form = ImportarSucursalesForm()
+
+    return render(
+        request,
+        "core/importar_sucursales.html",
+        {"form": form, "resumen": resumen},
+    )
+
+
+@staff_member_required
 def imprimir_carga_view(request, pk):
     """
     Reporte imprimible de una Carga (Cambio #8): encabezado de la carga,
@@ -64,7 +99,9 @@ def imprimir_carga_view(request, pk):
             {"carga": carga, "r": resumen_cierre(carga)},
         )
     facturas = list(
-        carga.facturas.select_related("cliente", "modalidad_pago").order_by("numero_factura")
+        carga.facturas.select_related("cliente", "modalidad_pago", "sucursal").order_by(
+            "numero_factura"
+        )
     )
 
     monto_total = Decimal("0")

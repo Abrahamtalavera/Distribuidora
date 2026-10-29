@@ -15,7 +15,7 @@
           <tr class="clic">
             <td><a class="fila" href="{% url 'ventas_factura' f.pk %}">{{ f.numero_factura }}</a></td>
             <td>{{ f.fecha_emision|date:"d/m/Y" }}</td>
-            <td>{{ f.cliente.nombre }}<div class="detalle">{{ f.cliente.codigo }}{% if f.cliente.sucursal %} · {{ f.cliente.sucursal }}{% endif %}</div></td>
+            <td>{{ f.cliente.nombre }}<div class="detalle">{{ f.cliente.codigo }}{% if f.sucursal %} · {{ f.sucursal.nombre }}{% elif f.cliente.sucursal %} · {{ f.cliente.sucursal }}{% endif %}</div></td>
             <td>{% if f.carga %}{{ f.carga.codigo_reporte }}{% else %}<span class="detalle">Sin carga</span>{% endif %}</td>
             <td><span class="badge badge-{{ f.estado_css }}">{{ f.estado_nombre }}</span></td>
             <td class="r">{{ f.total|moneda }}</td>

@@ -37,6 +37,12 @@
 
   <div class="seccion factura-header-info">
     <div class="linea"><span class="label">Cliente</span><span>{{ factura.cliente.nombre }}</span></div>
+    {% if factura.sucursal %}
+    <div class="linea"><span class="label">Sucursal</span><span>{{ factura.sucursal.nombre }}</span></div>
+    {% if factura.sucursal.direccion %}
+    <div class="linea"><span class="label">Dirección</span><span>{{ factura.sucursal.direccion }}</span></div>
+    {% endif %}
+    {% endif %}
     <div class="linea"><span class="label">Municipio</span><span>{{ factura.cliente.municipio }}</span></div>
     <div class="linea"><span class="label">Modalidad</span><span>
       {% if es_contado %}<span class="badge badge-contado">Contado</span>{% else %}<span class="badge badge-credito">{{ factura.modalidad_pago.nombre }}</span>{% endif %}

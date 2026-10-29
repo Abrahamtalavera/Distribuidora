@@ -13,9 +13,12 @@
     </div>
     <div style="font-size:15px;font-weight:600;margin-top:6px;">{{ factura.cliente.nombre }} <span style="font-weight:400;color:var(--muted);">· {{ factura.cliente.codigo }}</span></div>
     <div class="detalle" style="font-size:13px;margin-top:3px;">
-      {{ factura.cliente.sucursal|default:"—" }}{% if factura.cliente.canal %} · Canal {{ factura.cliente.canal }}{% endif %}
+      {% if factura.sucursal %}{{ factura.sucursal.nombre }}{% else %}{{ factura.cliente.sucursal|default:"—" }}{% endif %}{% if factura.cliente.canal %} · Canal {{ factura.cliente.canal }}{% endif %}
       · Vendedor: {{ factura.vendedor|default:"—" }}
     </div>
+    {% if factura.sucursal and factura.sucursal.direccion %}
+    <div class="detalle" style="font-size:13px;margin-top:3px;">Dirección de entrega: {{ factura.sucursal.direccion }}</div>
+    {% endif %}
   </div>
   <div class="datos">
     <div><span class="t">Emitida</span><span class="n">{{ factura.fecha_emision|date:"d/m/Y" }}</span></div>

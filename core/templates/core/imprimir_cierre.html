@@ -93,7 +93,7 @@
         {% for f in r.filas %}
         <tr{% if f.pagos %} class="con-pagos"{% endif %}>
           <td><b>{{ f.factura.numero_factura }}</b></td>
-          <td>{{ f.factura.cliente.nombre }}</td>
+          <td>{{ f.factura.cliente.nombre }}{% if f.factura.sucursal %}<br><span style="font-size:10px;color:#666;">{{ f.factura.sucursal.nombre }}</span>{% endif %}</td>
           <td class="r" style="white-space:nowrap">{% if f.hora %}{% if f.llegada %}{{ f.llegada|time:"H:i" }} → {% endif %}{{ f.hora|time:"H:i" }}{% else %}—{% endif %}</td>
           <td>{% if f.gps %}{{ f.gps.texto }}{% else %}—{% endif %}</td>
           <td>{% if f.es_contado %}Contado{% else %}{{ f.factura.modalidad_pago.nombre }}{% endif %}</td>

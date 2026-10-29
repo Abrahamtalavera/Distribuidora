@@ -8,6 +8,12 @@ class ImportarFacturasForm(forms.Form):
     archivo = forms.FileField(label="Archivo Excel (.xlsx)")
 
 
+class ImportarSucursalesForm(forms.Form):
+    """Cambio #25: subir el maestro de clientes/sucursales de SAP."""
+
+    archivo = forms.FileField(label="Archivo Excel (.xlsx)")
+
+
 class AgruparEnCargaForm(forms.Form):
     """Datos de la nueva Carga al agrupar facturas seleccionadas (Cambio #7)."""
 

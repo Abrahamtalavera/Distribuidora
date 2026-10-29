@@ -18,6 +18,7 @@ from core.models import (
     ModalidadPago,
     Pago,
     Producto,
+    Sucursal,
 )
 from core.tablero import resumen_tablero
 
@@ -705,3 +706,277 @@ class ConsultaCargasTests(TableroBase):
         self.assertEqual(r.context["hasta"].isoformat(), "2026-02-01")
         self.assertEqual(r.context["carga_id"], "abc")  # se conserva en el campo, pero no filtra
         self.assertEqual(r.context["cargas"], [])
+
+
+def _excel_sucursales(filas):
+    """
+    Construye en memoria un Excel con las columnas del maestro de
+    clientes/sucursales (Cambio #25), para usarlo en pruebas sin depender de
+    un archivo real en disco. `filas` es una lista de dicts con las claves
+    de core.importador_sucursales.COLUMNAS_ESPERADAS (las que falten quedan
+    en blanco).
+    """
+    from io import BytesIO
+
+    import openpyxl
+
+    from core.importador_sucursales import COLUMNAS_ESPERADAS
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(COLUMNAS_ESPERADAS)
+    for fila in filas:
+        ws.append([fila.get(col, "") for col in COLUMNAS_ESPERADAS])
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+class SucursalModelTests(TableroBase):
+    """Cambio #25: catálogo de Sucursales (direcciones de entrega) de un Cliente."""
+
+    def test_un_cliente_puede_tener_varias_sucursales(self):
+        s1 = Sucursal.objects.create(cliente=self.cliente, nombre="Centro", direccion="Calle 1")
+        s2 = Sucursal.objects.create(cliente=self.cliente, nombre="Bodega Norte", direccion="Calle 2")
+        self.assertEqual(set(self.cliente.sucursales.all()), {s1, s2})
+        self.assertEqual(str(s1), f"Centro ({self.cliente.codigo})")
+
+    def test_no_se_duplica_el_mismo_nombre_para_el_mismo_cliente(self):
+        from django.db import IntegrityError, transaction
+
+        Sucursal.objects.create(cliente=self.cliente, nombre="Centro")
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Sucursal.objects.create(cliente=self.cliente, nombre="Centro")
+
+    def test_factura_sin_sucursal_queda_en_null(self):
+        f = self.factura("SN-1")
+        self.assertIsNone(f.sucursal)
+
+
+class ImportadorSucursalesTests(TableroBase):
+    """Cambio #25: importar y re-importar el maestro de clientes/sucursales."""
+
+    def test_crea_clientes_y_sucursales_nuevas(self):
+        from core.importador_sucursales import importar_excel
+
+        archivo = _excel_sucursales(
+            [
+                {
+                    "Código SN": "C100",
+                    "Nombre SN": "Supermercado Uno",
+                    "Cod Grupo": 5,
+                    "Grupo": "Supermercados",
+                    "Nombre de dirección": "Tienda Centro",
+                    "Departamento": "Managua",
+                    "Territorio": "T1",
+                    "Municipio": "Managua",
+                    "Direccion": "Calle Central 123",
+                    "Canal": "Moderno",
+                    "EstadoCliente": "Activo",
+                },
+                {
+                    "Código SN": "C100",
+                    "Nombre SN": "Supermercado Uno",
+                    "Nombre de dirección": "Tienda Sur",
+                    "Direccion": "Carretera Sur km 5",
+                    "EstadoCliente": "Activo",
+                },
+            ]
+        )
+        resumen = importar_excel(archivo, nombre_archivo="maestro.xlsx")
+        self.assertEqual(resumen["sucursales_creadas"], 2)
+        self.assertEqual(resumen["sucursales_actualizadas"], 0)
+        self.assertEqual(resumen["clientes_nuevos"], 1)
+        self.assertEqual(resumen["filas_omitidas"], 0)
+
+        cliente = Cliente.objects.get(codigo="C100")
+        self.assertEqual(cliente.sucursales.count(), 2)
+        centro = cliente.sucursales.get(nombre="Tienda Centro")
+        self.assertEqual(centro.direccion, "Calle Central 123")
+        self.assertEqual(centro.grupo, "Supermercados")
+        self.assertEqual(centro.cod_grupo, 5)
+        self.assertTrue(centro.activo)
+
+    def test_reimportar_actualiza_en_vez_de_duplicar(self):
+        from core.importador_sucursales import importar_excel
+
+        primero = _excel_sucursales(
+            [
+                {
+                    "Código SN": "C100",
+                    "Nombre SN": "Supermercado Uno",
+                    "Nombre de dirección": "Tienda Centro",
+                    "Direccion": "Dirección vieja",
+                    "EstadoCliente": "Activo",
+                }
+            ]
+        )
+        importar_excel(primero, nombre_archivo="v1.xlsx")
+
+        segundo = _excel_sucursales(
+            [
+                {
+                    "Código SN": "C100",
+                    "Nombre SN": "Supermercado Uno",
+                    "Nombre de dirección": "Tienda Centro",
+                    "Direccion": "Dirección corregida",
+                    "EstadoCliente": "Inactivo",
+                }
+            ]
+        )
+        resumen = importar_excel(segundo, nombre_archivo="v2.xlsx")
+
+        self.assertEqual(resumen["sucursales_creadas"], 0)
+        self.assertEqual(resumen["sucursales_actualizadas"], 1)
+        self.assertEqual(Sucursal.objects.filter(cliente__codigo="C100").count(), 1)
+        sucursal = Sucursal.objects.get(cliente__codigo="C100", nombre="Tienda Centro")
+        self.assertEqual(sucursal.direccion, "Dirección corregida")
+        self.assertFalse(sucursal.activo)
+
+    def test_filas_sin_codigo_o_sin_nombre_se_omiten(self):
+        from core.importador_sucursales import importar_excel
+
+        archivo = _excel_sucursales(
+            [
+                # Código en blanco (solo espacios): se cuenta como omitida.
+                {"Código SN": "  ", "Nombre de dirección": "Tienda X", "EstadoCliente": "Activo"},
+                # Nombre de sucursal vacío (None): también se cuenta como omitida.
+                {"Código SN": "C200", "Nombre de dirección": "", "EstadoCliente": "Activo"},
+            ]
+        )
+        resumen = importar_excel(archivo, nombre_archivo="malo.xlsx")
+        self.assertEqual(resumen["filas_omitidas"], 2)
+        self.assertEqual(resumen["sucursales_creadas"], 0)
+
+    def test_columnas_faltantes_lanza_error(self):
+        from io import BytesIO
+
+        import openpyxl
+
+        from core.importador_sucursales import ImportacionError, importar_excel
+
+        wb = openpyxl.Workbook()
+        wb.active.append(["Código SN", "Nombre SN"])  # faltan casi todas las columnas
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        with self.assertRaises(ImportacionError):
+            importar_excel(buf, nombre_archivo="incompleto.xlsx")
+
+
+class ObtenerSucursalTests(TableroBase):
+    """
+    Cambio #25: el importador de facturas (core.importador) enlaza cada
+    factura nueva con su Sucursal por nombre, sin crear sucursales nuevas.
+    """
+
+    def test_encuentra_la_sucursal_ignorando_mayusculas_y_espacios(self):
+        from core.importador import _obtener_sucursal
+
+        Sucursal.objects.create(cliente=self.cliente, nombre="Tienda Centro", direccion="Calle 1")
+        encontrada = _obtener_sucursal({}, self.cliente, "  tienda centro  ")
+        self.assertIsNotNone(encontrada)
+        self.assertEqual(encontrada.nombre, "Tienda Centro")
+
+    def test_sin_coincidencia_devuelve_none_sin_crear_nada(self):
+        from core.importador import _obtener_sucursal
+
+        resultado = _obtener_sucursal({}, self.cliente, "Sucursal que no existe")
+        self.assertIsNone(resultado)
+        self.assertEqual(Sucursal.objects.count(), 0)
+
+    def test_nombre_vacio_devuelve_none(self):
+        from core.importador import _obtener_sucursal
+
+        self.assertIsNone(_obtener_sucursal({}, self.cliente, ""))
+        self.assertIsNone(_obtener_sucursal({}, self.cliente, None))
+
+    def test_usa_la_cache_en_vez_de_volver_a_consultar(self):
+        from core.importador import _obtener_sucursal
+
+        sucursal = Sucursal.objects.create(cliente=self.cliente, nombre="Tienda Centro")
+        sucursal_id = sucursal.id
+        cache = {}
+        primera = _obtener_sucursal(cache, self.cliente, "Tienda Centro")
+        Sucursal.objects.filter(pk=sucursal_id).delete()  # si usara la BD otra vez, daría None
+        segunda = _obtener_sucursal(cache, self.cliente, "Tienda Centro")
+        self.assertEqual(primera.id, sucursal_id)
+        self.assertEqual(segunda.id, sucursal_id)
+
+
+class ImportarSucursalesVistaTests(TableroBase):
+    """Cambio #25: pantalla de admin "Importar sucursales desde Excel"."""
+
+    def _archivo_valido(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        contenido = _excel_sucursales(
+            [
+                {
+                    "Código SN": "C300",
+                    "Nombre SN": "Ferretería Dos",
+                    "Nombre de dirección": "Sucursal Única",
+                    "Direccion": "Barrio Central",
+                    "EstadoCliente": "Activo",
+                }
+            ]
+        ).read()
+        return SimpleUploadedFile(
+            "maestro.xlsx", contenido, content_type="application/vnd.openxmlformats-officedocument.spreadsheetsheet.sheet"
+        )
+
+    def test_requiere_permiso_de_staff(self):
+        url = reverse("admin:core_cliente_importar_sucursales")
+        # Sin iniciar sesión, el admin redirige al login.
+        r = self.client.get(url)
+        self.assertEqual(r.status_code, 302)
+        # Usuario normal (no staff): también fuera.
+        self.client.force_login(User.objects.create_user("vendedor", password="x"))
+        r = self.client.get(url)
+        self.assertEqual(r.status_code, 302)
+
+    def test_staff_ve_el_formulario_y_el_boton_en_el_listado_de_clientes(self):
+        admin = User.objects.create_superuser("jefe", password="x")
+        self.client.force_login(admin)
+        r = self.client.get(reverse("admin:core_cliente_importar_sucursales"))
+        self.assertEqual(r.status_code, 200)
+        listado = self.client.get(reverse("admin:core_cliente_changelist"))
+        self.assertContains(listado, "Importar sucursales desde Excel")
+
+    def test_importacion_exitosa_muestra_resumen(self):
+        admin = User.objects.create_superuser("jefe2", password="x")
+        self.client.force_login(admin)
+        r = self.client.post(
+            reverse("admin:core_cliente_importar_sucursales"),
+            {"archivo": self._archivo_valido()},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "1 sucursales nuevas")
+        self.assertTrue(
+            Sucursal.objects.filter(cliente__codigo="C300", nombre="Sucursal Única").exists()
+        )
+
+    def test_archivo_con_columnas_faltantes_muestra_error(self):
+        from io import BytesIO
+
+        import openpyxl
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        wb = openpyxl.Workbook()
+        wb.active.append(["Código SN"])
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        archivo = SimpleUploadedFile(
+            "malo.xlsx", buf.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetsheet.sheet"
+        )
+
+        admin = User.objects.create_superuser("jefe3", password="x")
+        self.client.force_login(admin)
+        r = self.client.post(
+            reverse("admin:core_cliente_importar_sucursales"), {"archivo": archivo}
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "no tiene las columnas esperadas")

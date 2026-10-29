@@ -92,7 +92,12 @@
       <div>
         <div class="numero" data-texto="{{ factura.numero_factura }}">{{ factura.numero_factura }}</div>
         <div class="cliente" data-texto="{{ factura.cliente.nombre }}">{{ factura.cliente.nombre }}</div>
-        <div class="detalle-muted">{{ factura.cliente.municipio }}</div>
+        {% if factura.sucursal %}
+          <div class="detalle-muted" style="font-weight:600;">{{ factura.sucursal.nombre }}</div>
+          {% if factura.sucursal.direccion %}<div class="detalle-muted">{{ factura.sucursal.direccion }}</div>{% endif %}
+        {% else %}
+          <div class="detalle-muted">{{ factura.cliente.municipio }}</div>
+        {% endif %}
       </div>
       <div class="total">C$ {{ factura.total_fmt }}</div>
     </div>

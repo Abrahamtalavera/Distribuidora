@@ -1,0 +1,35 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<h1>Importar sucursales desde Excel</h1>
+
+<p>Sube el maestro de clientes/sucursales de SAP. Este archivo se puede volver a
+subir cuando se actualice (direcciones corregidas, sucursales nuevas): las
+sucursales que ya existen se actualizan y las nuevas se agregan, sin duplicar
+nada.</p>
+
+{% if messages %}
+  <ul class="messagelist">
+    {% for message in messages %}
+      <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+    {% endfor %}
+  </ul>
+{% endif %}
+
+<form method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <input type="submit" value="Importar" class="default">
+</form>
+
+{% if resumen %}
+  <h2>Resumen de la importación</h2>
+  <ul>
+    <li>Filas encontradas en el Excel: {{ resumen.filas_en_excel }}</li>
+    <li>Sucursales nuevas creadas: {{ resumen.sucursales_creadas }}</li>
+    <li>Sucursales actualizadas: {{ resumen.sucursales_actualizadas }}</li>
+    <li>Clientes nuevos creados: {{ resumen.clientes_nuevos }}</li>
+    <li>Filas omitidas (sin código o sin nombre de sucursal): {{ resumen.filas_omitidas }}</li>
+  </ul>
+{% endif %}
+{% endblock %}

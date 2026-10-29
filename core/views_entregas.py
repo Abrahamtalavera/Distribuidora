@@ -115,7 +115,7 @@ def entregas_lista_view(request, carga_id):
 
     facturas = list(
         carga.facturas.filter(estado_factura="ACTIVA")
-        .select_related("cliente", "modalidad_pago")
+        .select_related("cliente", "modalidad_pago", "sucursal")
         .prefetch_related("lineas")
         .order_by("cliente__nombre", "numero_factura")
     )
@@ -186,7 +186,7 @@ def entregas_captura_view(request, carga_id, factura_id):
         return redirect("entregas_acceso")
 
     factura = get_object_or_404(
-        Factura.objects.select_related("cliente", "modalidad_pago"),
+        Factura.objects.select_related("cliente", "modalidad_pago", "sucursal"),
         pk=factura_id,
         carga=carga,
     )

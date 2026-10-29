@@ -10,7 +10,11 @@ from django.shortcuts import redirect, render
 from core import models
 from core.forms import AgruparEnCargaForm
 from core.paquetes import facturas_sin_paquetes_costo, leer_paquetes_costo
-from core.views import importar_facturas_view, imprimir_carga_view
+from core.views import (
+    importar_facturas_view,
+    importar_sucursales_view,
+    imprimir_carga_view,
+)
 from core.views_cierre import cierre_carga_view, corregir_horas_view
 
 
@@ -27,8 +31,11 @@ class FacturaDetalleInline(admin.TabularInline):
 # FacturaAdmin.get_queryset. Los demás filtros (estado de entrega, estado de
 # factura, modalidad de pago, fecha de emisión) siguen en el panel lateral,
 # sin cambios.
+#
+# Cambio #25: "sucursal" ahora filtra por el nombre de la Sucursal real
+# (catálogo), no por el texto suelto que quedó guardado en Cliente.sucursal.
 FACTURA_FILTROS_TEXTO = {
-    "sucursal": {"lookup": "cliente__sucursal", "label": "Sucursal"},
+    "sucursal": {"lookup": "sucursal__nombre", "label": "Sucursal"},
     "municipio": {"lookup": "cliente__municipio", "label": "Municipio"},
     "canal": {"lookup": "cliente__canal", "label": "Canal"},
 }
@@ -62,7 +69,8 @@ class FacturaAdmin(admin.ModelAdmin):
     list_display = (
         "numero_factura",
         "cliente",
-        "sucursal",
+        "sucursal_entrega",
+        "direccion",
         "municipio",
         "canal",
         "ruta",
@@ -86,6 +94,7 @@ class FacturaAdmin(admin.ModelAdmin):
         "fecha_emision",
     )
     search_fields = ("numero_factura", "cliente__nombre", "cliente__codigo")
+    autocomplete_fields = ("sucursal",)
     inlines = [FacturaDetalleInline]
     change_list_template = "admin/core/factura/change_list.html"
     actions = ["agrupar_en_carga", "agregar_a_carga_existente"]
@@ -115,9 +124,16 @@ class FacturaAdmin(admin.ModelAdmin):
                 obj.costo_flete = None
         super().save_model(request, obj, form, change)
 
-    @admin.display(description="Sucursal", ordering="cliente__sucursal")
-    def sucursal(self, obj):
-        return obj.cliente.sucursal
+    # Cambio #25: si la factura tiene una Sucursal real (catálogo) se usa esa;
+    # si no (factura de antes de este cambio, o cliente sin sucursal todavía
+    # en el catálogo), se cae al texto suelto que había en Cliente.sucursal.
+    @admin.display(description="Sucursal", ordering="sucursal__nombre")
+    def sucursal_entrega(self, obj):
+        return obj.sucursal.nombre if obj.sucursal_id else obj.cliente.sucursal
+
+    @admin.display(description="Dirección", ordering="sucursal__direccion")
+    def direccion(self, obj):
+        return obj.sucursal.direccion if obj.sucursal_id else ""
 
     @admin.display(description="Municipio", ordering="cliente__municipio")
     def municipio(self, obj):
@@ -188,10 +204,16 @@ class FacturaAdmin(admin.ModelAdmin):
             for c in models.Carga.objects.order_by("-id")[:500]
         ]
 
+        sucursales = list(
+            models.Sucursal.objects.order_by("nombre")
+            .values_list("nombre", flat=True)
+            .distinct()
+        )
+
         return {
             "sucursal": {
                 "label": "Sucursal",
-                "options": [{"value": v, "label": v} for v in valores_distintos("sucursal")],
+                "options": [{"value": v, "label": v} for v in sucursales],
             },
             "municipio": {
                 "label": "Municipio",
@@ -366,11 +388,21 @@ class FacturaAdmin(admin.ModelAdmin):
     agregar_a_carga_existente.short_description = "Agregar seleccionadas a una Carga existente"
 
 
+# Cambio #25: sucursales (puntos de entrega) del cliente, editables ahí
+# mismo en la ficha del cliente, además del importador masivo de Excel.
+class SucursalInline(admin.TabularInline):
+    model = models.Sucursal
+    extra = 0
+    fields = ("nombre", "direccion", "municipio", "canal", "activo")
+
+
 @admin.register(models.Cliente)
 class ClienteAdmin(admin.ModelAdmin):
     list_display = ("codigo", "nombre", "municipio", "canal", "territorio", "ruta", "activo")
     list_filter = ("municipio", "canal", "territorio", "activo")
     search_fields = ("codigo", "nombre")
+    inlines = [SucursalInline]
+    change_list_template = "admin/core/cliente/change_list.html"
 
     # Cambio #22: si oficina escribe la ubicación a mano, queda anotado.
     def save_model(self, request, obj, form, change):
@@ -379,6 +411,27 @@ class ClienteAdmin(admin.ModelAdmin):
                 f"Escrita a mano por {request.user.get_username()}" if obj.latitud is not None else ""
             )
         super().save_model(request, obj, form, change)
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path(
+                "importar-sucursales/",
+                self.admin_site.admin_view(importar_sucursales_view),
+                name="core_cliente_importar_sucursales",
+            ),
+        ]
+        return custom + urls
+
+
+# Cambio #25: catálogo de sucursales, también administrable aparte (con
+# buscador propio, usado además por autocomplete_fields en FacturaAdmin).
+@admin.register(models.Sucursal)
+class SucursalAdmin(admin.ModelAdmin):
+    list_display = ("nombre", "cliente", "direccion", "municipio", "canal", "grupo", "activo")
+    list_filter = ("canal", "activo")
+    search_fields = ("nombre", "cliente__nombre", "cliente__codigo")
+    autocomplete_fields = ("cliente",)
 
 
 @admin.register(models.Producto)

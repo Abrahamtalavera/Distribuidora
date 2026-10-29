@@ -195,7 +195,7 @@ def alerta_facturas_atrasadas(hoy):
             carga__isnull=True,
             fecha_sugerida_entrega__lt=hoy,
         )
-        .select_related("cliente")
+        .select_related("cliente", "sucursal")
         .order_by("fecha_sugerida_entrega", "numero_factura")
     )
     datos = qs.aggregate(n=Count("id"), monto=Sum("total"))

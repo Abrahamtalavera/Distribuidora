@@ -5,6 +5,12 @@ Regla de negocio (Cambio #2):
 - Solo se agregan facturas NUEVAS (por Número_Factura). Las que ya existen
   en el sistema no se modifican, aunque el Excel traiga datos distintos.
 - Los códigos de cliente "OCASIONAL" se agrupan en un único cliente genérico.
+
+Cambio #25: la columna "Sucursal" de cada factura se usa, además, para
+enlazarla con su Sucursal del catálogo (cliente + nombre de sucursal), que
+trae la dirección de entrega. Si no hay una Sucursal con ese nombre para
+ese cliente (por ejemplo, porque el maestro de sucursales no se ha subido o
+está desactualizado), la factura se crea igual, solo que sin sucursal.
 """
 from collections import OrderedDict
 from datetime import timedelta
@@ -20,6 +26,7 @@ from core.models import (
     ModalidadPago,
     Producto,
     Ruta,
+    Sucursal,
     Vendedor,
 )
 
@@ -117,6 +124,27 @@ def _obtener_cliente(cache, codigo, nombre, municipio, sucursal, canal, territor
     return cliente
 
 
+def _obtener_sucursal(cache, cliente, nombre_sucursal):
+    """
+    Busca la Sucursal del cliente cuyo nombre coincida con la columna
+    "Sucursal" de la factura (sin importar mayúsculas ni espacios de más).
+    No crea una Sucursal nueva si no la encuentra -- eso solo lo hace el
+    importador del maestro de sucursales (core.importador_sucursales), que
+    trae la dirección; aquí solo se busca el enlace.
+    """
+    nombre_sucursal = (nombre_sucursal or "").strip()
+    if not nombre_sucursal:
+        return None
+    clave = (cliente.id, nombre_sucursal.lower())
+    if clave in cache:
+        return cache[clave]
+    sucursal = Sucursal.objects.filter(
+        cliente=cliente, nombre__iexact=nombre_sucursal
+    ).first()
+    cache[clave] = sucursal
+    return sucursal
+
+
 def _obtener_vendedor(cache, nombre):
     nombre = (nombre or "").strip()
     if not nombre:
@@ -178,8 +206,10 @@ def importar_excel(archivo, nombre_archivo=""):
     )
 
     cache_clientes, cache_vendedores, cache_productos, cache_modalidades = {}, {}, {}, {}
+    cache_sucursales = {}
 
     facturas_omitidas_existentes = 0
+    facturas_sin_sucursal = 0
     clientes_creados_antes = Cliente.objects.count()
     productos_creados_antes = Producto.objects.count()
     vendedores_creados_antes = Vendedor.objects.count()
@@ -206,6 +236,11 @@ def importar_excel(archivo, nombre_archivo=""):
         )
         vendedor = _obtener_vendedor(cache_vendedores, primera["Vendedor"])
         modalidad = _obtener_modalidad(cache_modalidades, primera["Tipo_Pago"])
+        sucursal = _obtener_sucursal(cache_sucursales, cliente, primera["Sucursal"])
+        if sucursal is None and (primera["Sucursal"] or "").strip():
+            # Trae nombre de sucursal pero no se encontró en el catálogo
+            # (maestro de sucursales desactualizado o sin subir todavía).
+            facturas_sin_sucursal += 1
 
         fecha = primera["Fecha"]
         fecha_emision = fecha.date() if hasattr(fecha, "date") else fecha
@@ -247,6 +282,7 @@ def importar_excel(archivo, nombre_archivo=""):
             numero_factura=numero_factura,
             serie=primera.get("Nombre de serie") or "",
             cliente=cliente,
+            sucursal=sucursal,
             vendedor=vendedor,
             modalidad_pago=modalidad,
             fecha_emision=fecha_emision,
@@ -280,6 +316,7 @@ def importar_excel(archivo, nombre_archivo=""):
         "facturas_en_excel": len(facturas_excel),
         "facturas_creadas": len(facturas_a_crear),
         "facturas_omitidas_existentes": facturas_omitidas_existentes,
+        "facturas_sin_sucursal": facturas_sin_sucursal,
         "lineas_creadas": len(detalles),
         "clientes_nuevos": Cliente.objects.count() - clientes_creados_antes,
         "productos_nuevos": Producto.objects.count() - productos_creados_antes,

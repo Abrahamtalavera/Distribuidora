@@ -102,7 +102,7 @@ def facturas_de_la_carga(carga):
     está cerrada, incluye además las que se liberaron al cerrar (siguen
     figurando en el cierre como "Sin visitar").
     """
-    base = Factura.objects.select_related("cliente", "modalidad_pago").prefetch_related("lineas")
+    base = Factura.objects.select_related("cliente", "modalidad_pago", "sucursal").prefetch_related("lineas")
     facturas = list(
         base.filter(carga=carga, estado_factura="ACTIVA").order_by("numero_factura")
     )
