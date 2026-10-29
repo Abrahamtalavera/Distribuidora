@@ -120,20 +120,20 @@
   table.facturas {
     width: 100%;
     border-collapse: collapse;
-    font-size: 12px;
+    font-size: 10px;
     margin-bottom: 24px;
   }
   table.facturas th {
     text-align: left;
     background: #f7f7f7;
     border-bottom: 2px solid #1a1a1a;
-    padding: 7px 8px;
-    font-size: 10.5px;
+    padding: 4px 6px;
+    font-size: 9px;
     text-transform: uppercase;
     color: #444;
   }
   table.facturas td {
-    padding: 7px 8px;
+    padding: 4px 6px;
     border-bottom: 1px solid #eee;
   }
   table.facturas td.num, table.facturas th.num { text-align: right; }
@@ -247,8 +247,6 @@
           <th>Cliente</th>
           <th>Sucursal</th>
           <th>Dirección</th>
-          <th>Fecha factura</th>
-          <th>Fecha sugerida de entrega</th>
           <th>Modalidad</th>
           <th>Estado entrega</th>
           <th class="num">Total</th>
@@ -262,8 +260,6 @@
           <td>{{ factura.cliente }}</td>
           <td>{% if factura.sucursal %}{{ factura.sucursal.nombre }}{% else %}—{% endif %}</td>
           <td>{% if factura.sucursal and factura.sucursal.direccion %}{{ factura.sucursal.direccion }}{% else %}—{% endif %}</td>
-          <td>{{ factura.fecha_emision|date:"d/m/Y" }}</td>
-          <td>{{ factura.fecha_sugerida_entrega|date:"d/m/Y"|default:"—" }}</td>
           <td>{{ factura.modalidad_pago|default:"—" }}</td>
           <td>{{ factura.get_estado_entrega_display }}</td>
           <td class="num">C$ {{ factura.total_fmt }}</td>
@@ -273,11 +269,11 @@
           {% endif %}
         </tr>
         {% empty %}
-        <tr><td colspan="11">Esta carga todavía no tiene facturas asignadas.</td></tr>
+        <tr><td colspan="9">Esta carga todavía no tiene facturas asignadas.</td></tr>
         {% endfor %}
         {% if pide_paquetes and facturas %}
         <tr>
-          <td colspan="8" style="font-weight:700;border-top:2px solid #1a1a1a;">Total</td>
+          <td colspan="6" style="font-weight:700;border-top:2px solid #1a1a1a;">Total</td>
           <td class="num" style="font-weight:700;border-top:2px solid #1a1a1a;">C$ {{ monto_total_fmt }}</td>
           <td class="num" style="font-weight:700;border-top:2px solid #1a1a1a;">{{ total_paquetes }}</td>
           <td class="num" style="font-weight:700;border-top:2px solid #1a1a1a;">C$ {{ total_costo|moneda }}</td>
