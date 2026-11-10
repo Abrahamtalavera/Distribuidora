@@ -1,0 +1,70 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  /* Cambio #27 */
+  .tabla { width:100%; margin:8px 0 16px; }
+  .tabla td.r, .tabla th.r { text-align:right; white-space:nowrap; }
+  .tabla label { display:block; cursor:pointer; }
+  .tabla tr.elegible:hover td { background:var(--darkened-bg); }
+  .estado { font-size:11px; font-weight:700; padding:2px 8px; border-radius:10px; white-space:nowrap; }
+  .estado.planeada { background:#eee; color:#555; }
+  .estado.ruta { background:#fff3e0; color:#8a5200; }
+  h2.sec { margin:18px 0 4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<form method="post">
+  {% csrf_token %}
+
+  <h2 class="sec">1. Elige la carga</h2>
+  {% if cargas %}
+  <p class="help">Solo aparecen las cargas Planeadas o En ruta.</p>
+  <table class="tabla">
+    <thead><tr><th></th><th>Carga</th><th>Fecha</th><th>Ruta</th><th>Repartidor</th><th>Estado</th><th class="r">Devoluciones sin factura</th></tr></thead>
+    <tbody>
+      {% for c in cargas %}
+      <tr class="elegible">
+        <td><input type="radio" name="carga_destino" value="{{ c.pk }}" id="carga_{{ c.pk }}" {% if destino and destino.pk == c.pk %}checked{% endif %} required></td>
+        <td><label for="carga_{{ c.pk }}"><b>{{ c.codigo_reporte }}</b></label></td>
+        <td><label for="carga_{{ c.pk }}">{{ c.fecha_planeada|date:"d/m/Y" }}</label></td>
+        <td>{{ c.ruta|default:"—" }}</td>
+        <td>{{ c.conductor|default:"—" }}</td>
+        <td><span class="estado {% if c.estado == 'EN_RUTA' %}ruta{% else %}planeada{% endif %}">{{ c.get_estado_display }}</span></td>
+        <td class="r">{{ c.total_devoluciones }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="errornote">No hay cargas Planeadas ni En ruta. Usa la acción "Agrupar seleccionadas en una nueva Carga".</p>
+  {% endif %}
+
+  <h2 class="sec">2. Devoluciones seleccionadas ({{ devoluciones|length }})</h2>
+  <table class="tabla">
+    <thead><tr><th>N.º</th><th>Sucursal</th><th>Estado</th><th>Carga actual</th><th class="r">Unidades (est.)</th></tr></thead>
+    <tbody>
+      {% for d in devoluciones %}
+      <tr>
+        <td><b>{{ d.codigo_reporte }}</b></td>
+        <td>{{ d.sucursal }}</td>
+        <td>{{ d.get_estado_display }}</td>
+        <td>{% if d.carga %}{{ d.carga.codigo_reporte }}{% else %}<span class="help">Sin carga</span>{% endif %}</td>
+        <td class="r">{{ d.total_unidades_estimado }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="help">Solo se agregan las devoluciones que todavía están en estado "Solicitada" (sin carga).</p>
+
+  {% for d in devoluciones %}
+    <input type="hidden" name="{{ action_checkbox_name }}" value="{{ d.pk }}">
+  {% endfor %}
+  <input type="hidden" name="action" value="agregar_a_carga_existente_devolucion">
+  <input type="submit" name="apply" value="Agregar a la carga" class="default" {% if not cargas %}disabled{% endif %}>
+  <a href="../" class="button cancel-link">Cancelar</a>
+</form>
+{% endblock %}

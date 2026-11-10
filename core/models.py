@@ -835,6 +835,158 @@ class ParadaCliente(models.Model):
         return f"{self.cliente} · {self.carga.codigo_reporte}"
 
 
+class DevolucionSinFactura(models.Model):
+    """
+    Cambio #27: devoluciones de producto que el cliente regresa sin que
+    estén asociadas a una factura puntual (por ejemplo, un cambio de
+    mercadería vieja o dañada que no corresponde a una entrega reciente).
+
+    Una persona de ventas registra la solicitud con los datos generales
+    (fecha, sucursal, motivo, contacto). Oficina la asigna a una Carga desde
+    el mismo planeador que agrupa facturas (Cambio #7/#23). El repartidor,
+    al pasar por la sucursal, captura el detalle de productos y cantidades
+    recibidas (DevolucionSinFacturaDetalle). Esas cantidades se entregan en
+    bodega de producto terminado y se reciben por detalle, igual que las
+    devoluciones que sí vienen de una factura (Cambio #16).
+    """
+
+    ESTADO_CHOICES = [
+        ("SOLICITADA", "Solicitada"),
+        ("ASIGNADA", "Asignada a ruta"),
+        ("RECOLECTADA", "Recolectada"),
+        ("CERRADA", "Cerrada"),
+    ]
+
+    fecha_ingreso = models.DateField(verbose_name="Fecha de ingreso")
+    sucursal = models.ForeignKey(
+        "Sucursal",
+        on_delete=models.PROTECT,
+        related_name="devoluciones_sin_factura",
+        verbose_name="Sucursal a retirar",
+    )
+    total_unidades_estimado = models.PositiveIntegerField(
+        verbose_name="Total de unidades (estimado)",
+        help_text="Lo que dice la persona de ventas al registrar la solicitud; el repartidor captura la cantidad real por producto.",
+    )
+    contacto_sucursal = models.CharField(
+        max_length=150,
+        blank=True,
+        verbose_name="Nombre de contacto en la sucursal",
+        help_text="Nombre de la persona de la sucursal que entrega la devolución (texto libre, no es un Vendedor).",
+    )
+    motivo = models.ForeignKey(
+        "MotivoDevolucion",
+        on_delete=models.PROTECT,
+        related_name="devoluciones_sin_factura",
+        verbose_name="Motivo general del retiro",
+    )
+    observaciones = models.TextField(blank=True)
+    estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default="SOLICITADA")
+    carga = models.ForeignKey(
+        "Carga",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="devoluciones_sin_factura",
+        verbose_name="Carga asignada",
+    )
+    creada_en = models.DateTimeField(auto_now_add=True)
+    creada_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        editable=False,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        verbose_name="Solicitada por",
+    )
+
+    # --- Captura del repartidor ---------------------------------------------
+    recolectada_en = models.DateTimeField(null=True, blank=True, editable=False)
+
+    # --- Recepción en bodega de producto terminado --------------------------
+    recibido_en = models.DateTimeField(
+        null=True, blank=True, editable=False, verbose_name="Recibida en bodega el"
+    )
+    recibido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        editable=False,
+        on_delete=models.SET_NULL,
+        related_name="devoluciones_sin_factura_recibidas",
+        verbose_name="Recibida por",
+    )
+    observaciones_bodega = models.TextField(
+        blank=True,
+        verbose_name="Observaciones de bodega",
+        help_text="Obligatoria cuando lo recibido en bodega no coincide con lo recolectado.",
+    )
+
+    class Meta:
+        verbose_name = "Devolución sin factura"
+        verbose_name_plural = "Devoluciones sin factura"
+        ordering = ["-creada_en"]
+        permissions = [
+            ("solicitar_devoluciones_sin_factura", "Puede solicitar devoluciones sin factura"),
+        ]
+
+    def __str__(self):
+        return self.codigo_reporte
+
+    @property
+    def codigo_reporte(self):
+        return f"DEVOL-{self.id:04d}"
+
+
+class DevolucionSinFacturaDetalle(models.Model):
+    """Línea de producto y cantidad que captura el repartidor al recolectar."""
+
+    devolucion = models.ForeignKey(
+        DevolucionSinFactura, on_delete=models.CASCADE, related_name="detalles"
+    )
+    producto = models.ForeignKey("Producto", on_delete=models.PROTECT, related_name="+")
+    cantidad_recolectada = models.DecimalField(max_digits=12, decimal_places=3)
+    # Cambio #27: lo que bodega de producto terminado recibió, separado por
+    # destino, igual que en EntregaDetalle (Cambio #16).
+    recibido_inventario = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        null=True,
+        blank=True,
+        verbose_name="Recibido a inventario",
+    )
+    recibido_merma = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        null=True,
+        blank=True,
+        verbose_name="Recibido como merma",
+    )
+
+    class Meta:
+        verbose_name = "Línea de devolución sin factura"
+        verbose_name_plural = "Líneas de devolución sin factura"
+
+    def __str__(self):
+        return f"{self.devolucion.codigo_reporte} / {self.producto.codigo}"
+
+    @property
+    def recepcion_registrada(self):
+        return self.recibido_inventario is not None or self.recibido_merma is not None
+
+    @property
+    def recibido_total(self):
+        if not self.recepcion_registrada:
+            return None
+        return (self.recibido_inventario or 0) + (self.recibido_merma or 0)
+
+    @property
+    def diferencia_recepcion(self):
+        total = self.recibido_total
+        return None if total is None else total - self.cantidad_recolectada
+
+
 class CorreccionHora(models.Model):
     """
     Cambio #22: registro de cada hora corregida por oficina (salida a ruta,

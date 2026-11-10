@@ -282,6 +282,34 @@
       </tbody>
     </table>
 
+    {% if devoluciones_sf %}
+    <div class="titulo-seccion">Devoluciones sin factura a recolectar en esta ruta ({{ devoluciones_sf|length }})</div>
+    <table class="facturas">
+      <thead>
+        <tr>
+          <th>N.º</th>
+          <th>Cliente</th>
+          <th>Sucursal</th>
+          <th>Dirección</th>
+          <th>Motivo</th>
+          <th class="num">Unidades (est.)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in devoluciones_sf %}
+        <tr>
+          <td>{{ d.codigo_reporte }}</td>
+          <td>{{ d.sucursal.cliente.nombre }}</td>
+          <td>{{ d.sucursal.nombre }}</td>
+          <td>{{ d.sucursal.direccion|default:"—" }}</td>
+          <td>{{ d.motivo }}</td>
+          <td class="num">{{ d.total_unidades_estimado }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
     <div class="resumen-box">
       <div class="resumen-titulo">Resumen de la carga</div>
       <div class="resumen-totales">

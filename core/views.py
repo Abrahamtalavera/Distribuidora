@@ -12,6 +12,7 @@ from core.importador_sucursales import (
     importar_excel as importar_excel_sucursales,
 )
 from core.cierre import resumen_cierre
+from core.devoluciones_sf import devoluciones_de_la_carga_para_repartidor
 from core.models import Carga
 
 
@@ -139,5 +140,7 @@ def imprimir_carga_view(request, pk):
             "pide_paquetes": carga.pide_paquetes_costo,
             "total_paquetes": total_paquetes,
             "total_costo": total_costo,
+            # Cambio #27: devoluciones sin factura asignadas a esta carga.
+            "devoluciones_sf": devoluciones_de_la_carga_para_repartidor(carga),
         },
     )

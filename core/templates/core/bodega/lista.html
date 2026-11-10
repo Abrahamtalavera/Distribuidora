@@ -49,7 +49,7 @@
               <td>{{ c.fecha_planeada|date:"d/m/Y" }}</td>
               <td>{{ c.ruta|default:"—" }}</td>
               <td>{{ c.conductor|default:"—" }}</td>
-              <td>{% if c.devoluciones_recibidas_por %}{{ c.devoluciones_recibidas_por.get_username }} · {% endif %}{{ c.devoluciones_recibidas_en|date:"d/m H:i" }}</td>
+              <td>{% if c.recepcion.recibido_por %}{{ c.recepcion.recibido_por.get_username }} · {% endif %}{{ c.recepcion.recibido_en|date:"d/m H:i" }}</td>
               <td class="r">{{ c.recepcion.productos }}</td>
               <td><span class="badge badge-{{ c.recepcion.css }}">{{ c.recepcion.nombre }}</span></td>
             </tr>

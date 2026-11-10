@@ -5,7 +5,15 @@
 
 from django.urls import path
 
-from core import views_bodega, views_cierre, views_entregas, views_tablero, views_ventas
+from core import (
+    views_bodega,
+    views_cierre,
+    views_entregas,
+    views_entregas_devolucion_sf,
+    views_tablero,
+    views_ventas,
+    views_ventas_devoluciones,
+)
 
 urlpatterns = [
     path("entregas/acceso/", views_entregas.entregas_acceso_view, name="entregas_acceso"),
@@ -70,4 +78,36 @@ urlpatterns = [
     path("ventas/ruta/excel/", views_ventas.ventas_ruta_excel_view, name="ventas_ruta_excel"),
     path("ventas/acceso/", views_ventas.VentasLoginView.as_view(), name="ventas_acceso"),
     path("ventas/salir/", views_ventas.ventas_salir_view, name="ventas_salir"),
+    # Cambio #27: solicitud de devoluciones sin factura (ventas).
+    path(
+        "devoluciones/acceso/",
+        views_ventas_devoluciones.DevolucionesSinFacturaLoginView.as_view(),
+        name="devoluciones_sf_acceso",
+    ),
+    path(
+        "devoluciones/salir/",
+        views_ventas_devoluciones.devoluciones_sf_salir_view,
+        name="devoluciones_sf_salir",
+    ),
+    path(
+        "devoluciones/solicitar/",
+        views_ventas_devoluciones.devoluciones_sf_solicitar_view,
+        name="devoluciones_sf_solicitar",
+    ),
+    path(
+        "devoluciones/lista/",
+        views_ventas_devoluciones.devoluciones_sf_lista_view,
+        name="devoluciones_sf_lista",
+    ),
+    # Cambio #27: captura del repartidor de una devolución sin factura.
+    path(
+        "entregas/carga/<int:carga_id>/devolucion/<int:devolucion_id>/",
+        views_entregas_devolucion_sf.entregas_devolucion_sf_view,
+        name="entregas_devolucion_sf",
+    ),
+    path(
+        "entregas/carga/<int:carga_id>/devolucion/buscar-producto/",
+        views_entregas_devolucion_sf.entregas_devolucion_sf_buscar_producto_view,
+        name="entregas_devolucion_sf_buscar_producto",
+    ),
 ]

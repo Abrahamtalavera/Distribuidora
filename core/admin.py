@@ -10,6 +10,11 @@ from django.shortcuts import redirect, render
 from core import models
 from core.forms import AgruparEnCargaForm
 from core.paquetes import facturas_sin_paquetes_costo, leer_paquetes_costo
+from core.devoluciones_sf import (
+    AsignarDevolucionError,
+    asignar_a_carga_existente as asignar_devolucion_a_carga_existente,
+    crear_carga_con_devoluciones,
+)
 from core.views import (
     importar_facturas_view,
     importar_sucursales_view,
@@ -573,6 +578,158 @@ class CargaAdmin(admin.ModelAdmin):
             ),
         ]
         return custom + urls
+
+
+# Cambio #27: devoluciones sin factura. Las líneas de detalle las captura el
+# repartidor desde su celular (core.views_entregas_devolucion_sf); aquí solo
+# se ven, de solo lectura.
+class DevolucionSinFacturaDetalleInline(admin.TabularInline):
+    model = models.DevolucionSinFacturaDetalle
+    extra = 0
+    fields = ("producto", "cantidad_recolectada", "recibido_inventario", "recibido_merma")
+    readonly_fields = fields
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(models.DevolucionSinFactura)
+class DevolucionSinFacturaAdmin(admin.ModelAdmin):
+    list_display = (
+        "codigo_reporte",
+        "fecha_ingreso",
+        "sucursal",
+        "contacto_sucursal",
+        "motivo",
+        "estado",
+        "total_unidades_estimado",
+        "carga",
+    )
+    list_filter = ("estado", "motivo__area_responsable")
+    search_fields = (
+        "sucursal__nombre",
+        "sucursal__cliente__nombre",
+        "sucursal__cliente__codigo",
+        "contacto_sucursal",
+    )
+    autocomplete_fields = ("sucursal",)
+    readonly_fields = (
+        "estado",
+        "carga",
+        "creada_en",
+        "creada_por",
+        "recolectada_en",
+        "recibido_en",
+        "recibido_por",
+        "observaciones_bodega",
+    )
+    inlines = [DevolucionSinFacturaDetalleInline]
+    actions = ["agrupar_en_carga_devolucion", "agregar_a_carga_existente_devolucion"]
+
+    def agrupar_en_carga_devolucion(self, request, queryset):
+        """
+        Acción de admin (Cambio #27): agrupa las devoluciones seleccionadas
+        en una Carga nueva. Mismo planeador (misma pantalla/mecánica) que
+        agrupa facturas en core.admin.FacturaAdmin.agrupar_en_carga.
+        """
+        devoluciones = list(
+            queryset.select_related("sucursal__cliente").order_by("fecha_ingreso", "id")
+        )
+        if "apply" in request.POST:
+            form = AgruparEnCargaForm(request.POST)
+            if form.is_valid():
+                try:
+                    carga, asignadas = crear_carga_con_devoluciones(
+                        fecha_planeada=form.cleaned_data["fecha_planeada"],
+                        ruta=form.cleaned_data["ruta"],
+                        conductor=form.cleaned_data["conductor"],
+                        vehiculo=form.cleaned_data["vehiculo"],
+                        km_inicial=form.cleaned_data["km_inicial"],
+                        observaciones=form.cleaned_data["observaciones"],
+                        devoluciones=devoluciones,
+                    )
+                except AsignarDevolucionError as exc:
+                    messages.error(request, str(exc))
+                else:
+                    self.message_user(
+                        request,
+                        f"Carga {carga.codigo_reporte} creada con {len(asignadas)} "
+                        f"devolución{'es' if len(asignadas) != 1 else ''} asignada(s).",
+                        messages.SUCCESS,
+                    )
+                    return None
+        else:
+            form = AgruparEnCargaForm()
+
+        return render(
+            request,
+            "admin/core/devolucionsinfactura/agrupar_en_carga.html",
+            {
+                "devoluciones": devoluciones,
+                "form": form,
+                "action_checkbox_name": ACTION_CHECKBOX_NAME,
+                "opts": self.model._meta,
+                "title": "Agrupar devoluciones en una nueva Carga",
+            },
+        )
+
+    agrupar_en_carga_devolucion.short_description = "Agrupar seleccionadas en una nueva Carga"
+
+    def agregar_a_carga_existente_devolucion(self, request, queryset):
+        """
+        Acción de admin (Cambio #27): agrega las devoluciones seleccionadas a
+        una Carga que ya existe. Mismo planeador que
+        core.admin.FacturaAdmin.agregar_a_carga_existente.
+        """
+        from core.asignar import cargas_destino
+
+        devoluciones = list(
+            queryset.select_related("sucursal__cliente", "carga").order_by(
+                "fecha_ingreso", "id"
+            )
+        )
+        cargas = list(cargas_destino()[:200])
+        destino = None
+        destino_id = request.POST.get("carga_destino", "")
+        if destino_id.isdigit():
+            destino = next((c for c in cargas if c.id == int(destino_id)), None)
+
+        if "apply" in request.POST:
+            if destino is None:
+                messages.error(request, "Elige la carga a la que quieres agregar las devoluciones.")
+            else:
+                try:
+                    agregadas = asignar_devolucion_a_carga_existente(destino, devoluciones)
+                except AsignarDevolucionError as exc:
+                    messages.error(request, str(exc))
+                else:
+                    self.message_user(
+                        request,
+                        f"{len(agregadas)} devolución{'es' if len(agregadas) != 1 else ''} "
+                        f"agregada{'s' if len(agregadas) != 1 else ''} a {destino.codigo_reporte}.",
+                        messages.SUCCESS,
+                    )
+                    return None
+
+        for c in cargas:
+            c.total_devoluciones = c.devoluciones_sin_factura.count()
+        return render(
+            request,
+            "admin/core/devolucionsinfactura/agregar_a_carga.html",
+            {
+                "devoluciones": devoluciones,
+                "cargas": cargas,
+                "destino": destino,
+                "action_checkbox_name": ACTION_CHECKBOX_NAME,
+                "opts": self.model._meta,
+                "title": "Agregar devoluciones a una Carga existente",
+            },
+        )
+
+    agregar_a_carga_existente_devolucion.short_description = (
+        "Agregar seleccionadas a una Carga existente"
+    )
 
 
 @admin.register(models.AreaResponsable)

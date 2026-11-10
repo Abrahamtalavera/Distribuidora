@@ -1,0 +1,157 @@
+{% extends "core/entregas/base.html" %}
+{% load formato %}
+
+{% block titulo %}{{ devolucion.codigo_reporte }}{% endblock %}
+
+{% block header %}
+<header class="app-header">
+  <div class="titulo">
+    {{ devolucion.codigo_reporte }}
+    <a class="btn-back" style="margin-left:auto;" href="{% url 'entregas_lista' carga.id %}" title="Volver">&#8594;</a>
+  </div>
+  <div class="subtitulo">{{ devolucion.sucursal.cliente.nombre }} — {{ devolucion.sucursal.nombre }}</div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div id="avisoJs"></div>
+
+<div class="seccion">
+  <h3>Datos de la solicitud</h3>
+  <div class="factura-header-info">
+    <div class="linea"><span class="label">Motivo</span><span>{{ devolucion.motivo }}</span></div>
+    <div class="linea"><span class="label">Unidades estimadas</span><span>{{ devolucion.total_unidades_estimado }}</span></div>
+    {% if devolucion.contacto_sucursal %}<div class="linea"><span class="label">Contacto</span><span>{{ devolucion.contacto_sucursal }}</span></div>{% endif %}
+    {% if devolucion.observaciones %}<div class="linea"><span class="label">Observaciones</span><span>{{ devolucion.observaciones }}</span></div>{% endif %}
+  </div>
+</div>
+
+<form method="post" id="form-devolucion">
+  {% csrf_token %}
+  <div class="seccion">
+    <h3>Productos recolectados</h3>
+    <div class="buscador" style="position:relative;">
+      <span class="lupa">&#128269;</span>
+      <input type="text" id="buscarProducto" placeholder="Buscar producto por código o descripción" autocomplete="off">
+      <div id="sugerencias" class="oculto" style="position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid var(--border); border-radius:8px; margin-top:4px; max-height:220px; overflow-y:auto; z-index:20; box-shadow:0 4px 10px rgba(0,0,0,.08);"></div>
+    </div>
+    <div id="filasProductos"></div>
+    <p class="detalle-muted oculto" id="sinLineas" style="padding:8px 0;">Busca y agrega al menos un producto.</p>
+  </div>
+
+  <div class="seccion">
+    <h3>Observaciones</h3>
+    <textarea name="observaciones" rows="2" placeholder="Opcional">{{ devolucion.observaciones }}</textarea>
+  </div>
+
+  <div class="acciones-rapidas">
+    <button class="btn-rapido" type="submit" style="flex:1; color:#fff; background:var(--primary); border-color:var(--primary);">Guardar recolección</button>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  "use strict";
+  var urlBuscar = "{% url 'entregas_devolucion_sf_buscar_producto' carga.id %}";
+  var input = document.getElementById("buscarProducto");
+  var sugerencias = document.getElementById("sugerencias");
+  var filas = document.getElementById("filasProductos");
+  var sinLineas = document.getElementById("sinLineas");
+  var aviso = document.getElementById("avisoJs");
+  var agregados = {};
+  var contador = 0;
+
+  var previas = {{ lineas_previas_json|safe }};
+
+  function escapar(s) {
+    var d = document.createElement("div");
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function actualizarVacio() {
+    sinLineas.classList.toggle("oculto", filas.children.length > 0);
+  }
+
+  function agregarFila(producto, cantidadInicial) {
+    if (agregados[producto.id]) {
+      var existente = agregados[producto.id].querySelector("input.cant");
+      existente.value = (parseFloat(existente.value || "0") + (cantidadInicial ? parseFloat(cantidadInicial) : 1));
+      return;
+    }
+    contador++;
+    var fila = document.createElement("div");
+    fila.className = "linea-producto";
+    fila.innerHTML =
+      '<input type="hidden" name="producto_id" value="' + producto.id + '">' +
+      '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">' +
+        '<div><div class="nombre-producto">' + escapar(producto.nombre) + '</div>' +
+        '<div class="cant-facturada">' + escapar(producto.codigo) + '</div></div>' +
+        '<button type="button" class="btn-quitar" title="Quitar">&times;</button></div>' +
+      '<div class="campo-cantidad" style="margin-top:8px;"><label>Cantidad recolectada</label>' +
+      '<input type="number" name="cantidad" class="cant" min="0" step="0.001" inputmode="decimal" value="' + (cantidadInicial || "1") + '"></div>';
+    fila.querySelector(".btn-quitar").addEventListener("click", function () {
+      delete agregados[producto.id];
+      fila.remove();
+      actualizarVacio();
+    });
+    agregados[producto.id] = fila;
+    filas.appendChild(fila);
+    actualizarVacio();
+  }
+
+  previas.forEach(function (l) { agregarFila(l.producto, l.cantidad); });
+
+  var temporizador = null;
+  input.addEventListener("input", function () {
+    var q = input.value.trim();
+    if (temporizador) clearTimeout(temporizador);
+    if (q.length < 2) { sugerencias.classList.add("oculto"); sugerencias.innerHTML = ""; return; }
+    temporizador = setTimeout(function () {
+      fetch(urlBuscar + "?q=" + encodeURIComponent(q), { credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          var resultados = data.resultados || [];
+          if (!resultados.length) {
+            sugerencias.innerHTML = '<div style="padding:10px 12px; font-size:13px; color:var(--muted);">Sin resultados</div>';
+            sugerencias.classList.remove("oculto");
+            return;
+          }
+          sugerencias.innerHTML = resultados.map(function (p) {
+            return '<div class="opcion-prod" data-id="' + p.id + '" data-codigo="' + escapar(p.codigo) + '" data-nombre="' + escapar(p.nombre) + '" ' +
+              'style="padding:9px 12px; font-size:13px; cursor:pointer; border-bottom:1px solid #f0f0f0;">' +
+              '<b>' + escapar(p.codigo) + '</b> — ' + escapar(p.nombre) + '</div>';
+          }).join("");
+          sugerencias.classList.remove("oculto");
+        })
+        .catch(function () { sugerencias.classList.add("oculto"); });
+    }, 250);
+  });
+
+  sugerencias.addEventListener("click", function (e) {
+    var op = e.target.closest(".opcion-prod");
+    if (!op) return;
+    agregarFila({ id: op.dataset.id, codigo: op.dataset.codigo, nombre: op.dataset.nombre });
+    input.value = "";
+    sugerencias.classList.add("oculto");
+    sugerencias.innerHTML = "";
+  });
+
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest(".buscador")) sugerencias.classList.add("oculto");
+  });
+
+  document.getElementById("form-devolucion").addEventListener("submit", function (e) {
+    if (filas.children.length === 0) {
+      e.preventDefault();
+      aviso.innerHTML = '<div class="aviso error">Agrega al menos un producto con cantidad mayor que cero.</div>';
+      window.scrollTo(0, 0);
+    }
+  });
+
+  actualizarVacio();
+})();
+</script>
+{% endblock %}

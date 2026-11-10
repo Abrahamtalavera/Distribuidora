@@ -21,11 +21,18 @@ from django.views.decorators.http import require_http_methods, require_POST
 from core.bodega import (
     ESTADOS_VISIBLES_BODEGA,
     RecepcionError,
-    cargas_para_bodega,
     devoluciones_de_la_carga,
     puede_recibir,
     registrar_recepcion,
     resumen_recepcion,
+)
+# Cambio #27: devoluciones sin factura, recibidas en la misma pantalla.
+from core.devoluciones_sf import (
+    RecepcionSinFacturaError,
+    cargas_para_bodega_combinado,
+    detalles_sin_factura_de_la_carga,
+    registrar_recepcion_sin_factura,
+    resumen_recepcion_sin_factura,
 )
 from core.models import Carga
 
@@ -75,7 +82,9 @@ def bodega_salir_view(request):
 
 @bodega_required
 def bodega_lista_view(request):
-    pendientes, recibidas = cargas_para_bodega()
+    # Cambio #27: incluye también las cargas que solo tienen devoluciones
+    # sin factura (y ninguna con factura).
+    pendientes, recibidas = cargas_para_bodega_combinado()
     return render(
         request,
         "core/bodega/lista.html",
@@ -95,8 +104,41 @@ def bodega_recepcion_view(request, carga_id):
     )
     escrito = None  # lo escrito en un intento de confirmar que falló
     corrigiendo = request.GET.get("corregir") == "1"
+    # Cambio #27: devoluciones sin factura, su propio formulario en la misma
+    # página (no se mezclan: cada una se confirma por separado).
+    escrito_sf = None
+    corrigiendo_sf = request.GET.get("corregir_sf") == "1"
 
-    if request.method == "POST":
+    if request.method == "POST" and request.POST.get("seccion") == "sf":
+        detalles_sf = detalles_sin_factura_de_la_carga(carga)
+        escrito_sf = {
+            "cantidades": {
+                d.id: (
+                    request.POST.get(f"invsf_{d.id}", "").strip(),
+                    request.POST.get(f"mersf_{d.id}", "").strip(),
+                )
+                for d in detalles_sf
+            },
+            "observaciones": request.POST.get("observaciones_bodega_sf", ""),
+        }
+        try:
+            registrar_recepcion_sin_factura(
+                carga,
+                usuario=request.user,
+                cantidades={
+                    i: (_decimal_o_none(inv), _decimal_o_none(mer))
+                    for i, (inv, mer) in escrito_sf["cantidades"].items()
+                },
+                observaciones=escrito_sf["observaciones"],
+            )
+        except RecepcionSinFacturaError as exc:
+            messages.error(request, str(exc))
+        else:
+            messages.success(
+                request, "Recepción de devoluciones sin factura confirmada."
+            )
+            return redirect("bodega_recepcion", carga_id=carga.id)
+    elif request.method == "POST":
         devoluciones = devoluciones_de_la_carga(carga)
         escrito = {
             "cantidades": {
@@ -138,6 +180,23 @@ def bodega_recepcion_view(request, carga_id):
             d.valor_inv = "" if d.recibido_inventario is None else _plano(d.recibido_inventario)
             d.valor_mer = "" if d.recibido_merma is None else _plano(d.recibido_merma)
 
+    detalles_sf = detalles_sin_factura_de_la_carga(carga)
+    recepcion_sf = resumen_recepcion_sin_factura(carga, detalles_sf)
+    editando_sf = recepcion_sf["editable"] and (
+        not recepcion_sf["confirmada"] or corrigiendo_sf or escrito_sf is not None
+    )
+    for d in detalles_sf:
+        if escrito_sf is not None:
+            d.valor_inv, d.valor_mer = escrito_sf["cantidades"].get(d.id, ("", ""))
+        else:
+            d.valor_inv = "" if d.recibido_inventario is None else _plano(d.recibido_inventario)
+            d.valor_mer = "" if d.recibido_merma is None else _plano(d.recibido_merma)
+    obs_escrita_sf = (
+        escrito_sf["observaciones"]
+        if escrito_sf is not None
+        else (detalles_sf[0].devolucion.observaciones_bodega if detalles_sf else "")
+    )
+
     return render(
         request,
         "core/bodega/recepcion.html",
@@ -149,6 +208,10 @@ def bodega_recepcion_view(request, carga_id):
             "obs_escrita": (
                 escrito["observaciones"] if escrito is not None else carga.observaciones_bodega
             ),
+            "detalles_sf": detalles_sf,
+            "recepcion_sf": recepcion_sf,
+            "editando_sf": editando_sf,
+            "obs_escrita_sf": obs_escrita_sf,
         },
     )
 

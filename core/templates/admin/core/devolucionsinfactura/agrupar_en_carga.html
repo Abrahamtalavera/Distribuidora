@@ -1,0 +1,29 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<h1>Agrupar devoluciones en una nueva Carga</h1>
+
+<form method="post">
+  {% csrf_token %}
+
+  {{ form.as_p }}
+
+  <p>Vas a crear una nueva Carga (identificador de carga consecutivo) y asignarle
+  las siguientes {{ devoluciones|length }} devolución{{ devoluciones|length|pluralize:"es" }}:</p>
+  <ul>
+    {% for d in devoluciones %}
+      <li>
+        {{ d.codigo_reporte }} — {{ d.sucursal }} —
+        {{ d.get_estado_display }} — {{ d.total_unidades_estimado }} unidad{{ d.total_unidades_estimado|pluralize:"es" }} (est.)
+      </li>
+    {% endfor %}
+  </ul>
+
+  {% for d in devoluciones %}
+    <input type="hidden" name="{{ action_checkbox_name }}" value="{{ d.pk }}">
+  {% endfor %}
+  <input type="hidden" name="action" value="agrupar_en_carga_devolucion">
+  <input type="submit" name="apply" value="Crear carga y asignar" class="default">
+  <a href="../" class="button cancel-link">Cancelar</a>
+</form>
+{% endblock %}

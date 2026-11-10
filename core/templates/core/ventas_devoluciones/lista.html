@@ -1,0 +1,28 @@
+{% extends "core/ventas_devoluciones/_marco.html" %}
+{% block titulo %}Mis solicitudes{% endblock %}
+{% block contenido %}
+<div class="seccion">
+  <h3>Todas las solicitudes</h3>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>N.º</th><th>Fecha</th><th>Sucursal</th><th>Contacto</th><th>Unidades (est.)</th><th>Motivo</th><th>Estado</th><th>Carga</th></tr></thead>
+      <tbody>
+        {% for d in solicitudes %}
+        <tr>
+          <td class="folio">{{ d.codigo_reporte }}</td>
+          <td>{{ d.fecha_ingreso|date:"d/m/Y" }}</td>
+          <td>{{ d.sucursal }}</td>
+          <td>{{ d.contacto_sucursal|default:"—" }}</td>
+          <td class="r">{{ d.total_unidades_estimado }}</td>
+          <td>{{ d.motivo }}</td>
+          <td><span class="badge-estado badge-{{ d.estado }}">{{ d.get_estado_display }}</span></td>
+          <td>{{ d.carga.codigo_reporte|default:"—" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8">Todavía no hay solicitudes.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

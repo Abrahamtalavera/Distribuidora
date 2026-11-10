@@ -25,6 +25,9 @@ from core.entregas import (
     valor_unitario,
 )
 from core.cierre import anotar_resultado, resumen_cierre
+# Cambio #27: devoluciones sin factura asignadas a esta Carga, para que el
+# repartidor las vea y las recolecte igual que las facturas.
+from core.devoluciones_sf import devoluciones_de_la_carga_para_repartidor
 from core.paquetes import facturas_sin_paquetes_costo
 from core.salida import (
     SalidaError,
@@ -175,6 +178,11 @@ def entregas_lista_view(request, carga_id):
             "puede_capturar": puede_capturar,
             "r": resumen_cierre(carga) if carga.bloqueada_para_repartidor else None,
             "tiempos": tiempos,
+            # Cambio #27: devoluciones sin factura de esta carga (aparte de
+            # las facturas; no entran en la búsqueda/filtro de facturas).
+            "devoluciones_sf": devoluciones_de_la_carga_para_repartidor(carga)
+            if puede_capturar
+            else [],
         },
     )
 

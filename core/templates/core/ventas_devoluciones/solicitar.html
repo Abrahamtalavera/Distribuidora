@@ -1,0 +1,68 @@
+{% extends "core/ventas_devoluciones/_marco.html" %}
+{% block titulo %}Solicitar devolución sin factura{% endblock %}
+{% block contenido %}
+<div class="seccion">
+  <h3>Nueva solicitud</h3>
+  <form method="post">
+    {% csrf_token %}
+    <div class="campo">
+      <label for="{{ form.fecha_ingreso.id_for_label }}">{{ form.fecha_ingreso.label }}</label>
+      {{ form.fecha_ingreso }}
+      {{ form.fecha_ingreso.errors }}
+    </div>
+    <div class="campo">
+      <label for="{{ form.sucursal.id_for_label }}">{{ form.sucursal.label }}</label>
+      {{ form.sucursal }}
+      {{ form.sucursal.errors }}
+    </div>
+    <div class="campo">
+      <label for="{{ form.total_unidades_estimado.id_for_label }}">{{ form.total_unidades_estimado.label }}</label>
+      {{ form.total_unidades_estimado }}
+      {{ form.total_unidades_estimado.errors }}
+    </div>
+    <div class="campo">
+      <label for="{{ form.contacto_sucursal.id_for_label }}">{{ form.contacto_sucursal.label }}</label>
+      {{ form.contacto_sucursal }}
+      <div class="ayuda">{{ form.contacto_sucursal.help_text }}</div>
+      {{ form.contacto_sucursal.errors }}
+    </div>
+    <div class="campo">
+      <label for="{{ form.motivo.id_for_label }}">{{ form.motivo.label }}</label>
+      {{ form.motivo }}
+      {{ form.motivo.errors }}
+    </div>
+    <div class="campo">
+      <label for="{{ form.observaciones.id_for_label }}">{{ form.observaciones.label }}</label>
+      {{ form.observaciones }}
+      {{ form.observaciones.errors }}
+    </div>
+    <div class="acciones">
+      <button class="btn-pri" type="submit">Guardar solicitud</button>
+    </div>
+  </form>
+</div>
+
+<div class="seccion">
+  <h3>Últimas solicitudes</h3>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>N.º</th><th>Fecha</th><th>Sucursal</th><th>Unidades (est.)</th><th>Motivo</th><th>Estado</th><th>Carga</th></tr></thead>
+      <tbody>
+        {% for d in recientes %}
+        <tr>
+          <td class="folio">{{ d.codigo_reporte }}</td>
+          <td>{{ d.fecha_ingreso|date:"d/m/Y" }}</td>
+          <td>{{ d.sucursal }}</td>
+          <td class="r">{{ d.total_unidades_estimado }}</td>
+          <td>{{ d.motivo }}</td>
+          <td><span class="badge-estado badge-{{ d.estado }}">{{ d.get_estado_display }}</span></td>
+          <td>{{ d.carga.codigo_reporte|default:"—" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7">Todavía no hay solicitudes.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

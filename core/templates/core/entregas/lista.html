@@ -141,6 +141,34 @@
 {% endfor %}
 </div>
 <p class="detalle-muted oculto" id="sinResultados" style="text-align:center; padding:20px;"></p>
+
+{% if devoluciones_sf %}
+<h3 style="font-size:13px; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); margin:18px 0 8px;">Devoluciones sin factura</h3>
+<div id="listaDevolucionesSf">
+  {% for d in devoluciones_sf %}
+  <div class="factura-card{% if d.estado == 'RECOLECTADA' %} cargada{% endif %}">
+    <a href="{% url 'entregas_devolucion_sf' carga.id d.id %}" style="display:block; text-decoration:none; color:inherit;">
+      <div class="fila-top">
+        <div>
+          <div class="numero">{{ d.codigo_reporte }} <span class="badge" style="background:#f3e5f5; color:#6a1b9a;">Devolución</span></div>
+          <div class="cliente">{{ d.sucursal.cliente.nombre }}</div>
+          <div class="detalle-muted">{{ d.sucursal.nombre }}</div>
+        </div>
+        <div class="total">{{ d.total_unidades_estimado }} unid. (est.)</div>
+      </div>
+    </a>
+    <div class="fila-bottom" style="justify-content:flex-start; gap:6px;">
+      {% if d.estado == "RECOLECTADA" %}
+        <span class="badge badge-cargada">Recolectada</span>
+      {% else %}
+        <span class="badge badge-porcargar">Por recolectar</span>
+      {% endif %}
+      <span class="detalle-muted">{{ d.motivo }}</span>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 {% endblock %}
 
 {% block barra_inferior %}

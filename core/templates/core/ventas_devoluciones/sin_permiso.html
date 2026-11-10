@@ -1,0 +1,14 @@
+{% extends "core/bodega/base.html" %}
+{% block titulo %}Sin permiso{% endblock %}
+{% block cuerpo %}
+<div class="desk angosto">
+  <div class="desk-head"><div><h1>Devoluciones sin factura</h1></div></div>
+  <div class="desk-body">
+    <div class="aviso error">El usuario <b>{{ request.user.get_username }}</b> no tiene permiso para solicitar devoluciones sin factura. Pide en oficina que lo agreguen al grupo "Ventas — Devoluciones".</div>
+    <form method="post" action="{% url 'devoluciones_sf_salir' %}">
+      {% csrf_token %}
+      <button class="btn-pri ancho" type="submit">Entrar con otro usuario</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

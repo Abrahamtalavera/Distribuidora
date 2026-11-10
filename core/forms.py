@@ -46,3 +46,36 @@ class AgruparEnCargaForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["fecha_planeada"].initial = timezone.localdate()
+
+
+class SolicitarDevolucionSinFacturaForm(forms.Form):
+    """Cambio #27: datos generales de una devolución sin factura (ventas)."""
+
+    fecha_ingreso = forms.DateField(
+        label="Fecha de ingreso",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+    )
+    sucursal = forms.ModelChoiceField(
+        queryset=models.Sucursal.objects.filter(activo=True).select_related("cliente"),
+        label="Sucursal a retirar",
+    )
+    total_unidades_estimado = forms.IntegerField(
+        label="Total de unidades (estimado)", min_value=1
+    )
+    contacto_sucursal = forms.CharField(
+        required=False,
+        max_length=150,
+        label="Nombre de contacto en la sucursal",
+        help_text="Quien entrega la devolución en la sucursal (texto libre).",
+    )
+    motivo = forms.ModelChoiceField(
+        queryset=models.MotivoDevolucion.objects.filter(activo=True).order_by("nombre"),
+        label="Motivo general del retiro",
+    )
+    observaciones = forms.CharField(
+        required=False, widget=forms.Textarea(attrs={"rows": 3}), label="Observaciones"
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["fecha_ingreso"].initial = timezone.localdate()

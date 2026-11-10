@@ -11,14 +11,20 @@ from core.models import (
     CargaCuadre,
     CarteraCobro,
     Cliente,
+    DevolucionSinFactura,
+    DevolucionSinFacturaDetalle,
     Entrega,
     EntregaDetalle,
     Factura,
     FacturaDetalle,
     ModalidadPago,
+    MotivoDevolucion,
     Pago,
     Producto,
+    Ruta,
     Sucursal,
+    Vehiculo,
+    Vendedor,
 )
 from core.tablero import resumen_tablero
 
@@ -980,3 +986,382 @@ class ImportarSucursalesVistaTests(TableroBase):
         )
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "no tiene las columnas esperadas")
+
+
+class DevolucionSinFacturaBase(TableroBase):
+    """Cambio #27: datos mínimos para las devoluciones sin factura."""
+
+    def setUp(self):
+        super().setUp()
+        self.ruta = Ruta.objects.create(nombre="Ruta 1")
+        self.repartidor = Vendedor.objects.create(
+            nombre="Juan Repartidor", tipo="REPARTIDOR", pin_acceso="4321"
+        )
+        self.sucursal = Sucursal.objects.create(cliente=self.cliente, nombre="Sucursal Centro")
+        self.motivo = MotivoDevolucion.objects.filter(activo=True).first()
+        self.ventas = User.objects.create_user("ventas1", password="x")
+        grupo, _ = Group.objects.get_or_create(name="Ventas — Devoluciones")
+        self.ventas.groups.add(grupo)
+        self.bodega_user = User.objects.create_user("bodega1", password="x")
+        grupo_bodega, _ = Group.objects.get_or_create(name="Bodega PT")
+        self.bodega_user.groups.add(grupo_bodega)
+        self.admin = User.objects.create_superuser("jefe_devol", password="x")
+
+    def crear_devolucion(self, **extra):
+        campos = {
+            "fecha_ingreso": self.hoy,
+            "sucursal": self.sucursal,
+            "total_unidades_estimado": 10,
+            "contacto_sucursal": "María en bodega del cliente",
+            "motivo": self.motivo,
+        }
+        campos.update(extra)
+        return DevolucionSinFactura.objects.create(**campos)
+
+
+class DevolucionSinFacturaModeloTests(DevolucionSinFacturaBase):
+    def test_codigo_reporte(self):
+        d = self.crear_devolucion()
+        self.assertEqual(d.codigo_reporte, f"DEVOL-{d.id:04d}")
+
+    def test_propiedades_detalle(self):
+        d = self.crear_devolucion(estado="RECOLECTADA")
+        linea = DevolucionSinFacturaDetalle.objects.create(
+            devolucion=d, producto=self.producto, cantidad_recolectada=Decimal("5")
+        )
+        self.assertFalse(linea.recepcion_registrada)
+        self.assertIsNone(linea.recibido_total)
+        self.assertIsNone(linea.diferencia_recepcion)
+        linea.recibido_inventario = Decimal("4")
+        linea.recibido_merma = Decimal("1")
+        linea.save()
+        self.assertTrue(linea.recepcion_registrada)
+        self.assertEqual(linea.recibido_total, Decimal("5"))
+        self.assertEqual(linea.diferencia_recepcion, Decimal("0"))
+
+
+class SolicitarDevolucionTests(DevolucionSinFacturaBase):
+    def test_puede_solicitar(self):
+        from core.devoluciones_sf import puede_solicitar
+
+        self.assertTrue(puede_solicitar(self.ventas))
+        otro = User.objects.create_user("sinpermiso", password="x")
+        self.assertFalse(puede_solicitar(otro))
+
+    def test_crear_solicitud(self):
+        from core.devoluciones_sf import crear_solicitud
+
+        d = crear_solicitud(
+            fecha_ingreso=self.hoy,
+            sucursal=self.sucursal,
+            total_unidades_estimado=8,
+            contacto_sucursal="Pedro",
+            motivo=self.motivo,
+            observaciones="",
+            usuario=self.ventas,
+        )
+        self.assertEqual(d.estado, "SOLICITADA")
+        self.assertEqual(d.creada_por, self.ventas)
+
+    def test_vista_solicitar_requiere_permiso(self):
+        r = self.client.get(reverse("devoluciones_sf_solicitar"))
+        self.assertEqual(r.status_code, 302)
+        sin_permiso = User.objects.create_user("x1", password="x")
+        self.client.force_login(sin_permiso)
+        r = self.client.get(reverse("devoluciones_sf_solicitar"))
+        self.assertEqual(r.status_code, 403)
+
+    def test_vista_solicitar_crea_devolucion(self):
+        self.client.force_login(self.ventas)
+        r = self.client.post(
+            reverse("devoluciones_sf_solicitar"),
+            {
+                "fecha_ingreso": self.hoy.isoformat(),
+                "sucursal": self.sucursal.pk,
+                "total_unidades_estimado": "12",
+                "contacto_sucursal": "Ana",
+                "motivo": self.motivo.pk,
+                "observaciones": "",
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(DevolucionSinFactura.objects.count(), 1)
+        creada = DevolucionSinFactura.objects.first()
+        self.assertEqual(creada.estado, "SOLICITADA")
+        self.assertEqual(creada.creada_por, self.ventas)
+
+    def test_vista_lista(self):
+        self.crear_devolucion()
+        self.client.force_login(self.ventas)
+        r = self.client.get(reverse("devoluciones_sf_lista"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "DEVOL-")
+
+
+class AsignarDevolucionACargaTests(DevolucionSinFacturaBase):
+    def test_asignar_a_carga_existente(self):
+        from core.devoluciones_sf import asignar_a_carga_existente
+
+        destino = Carga.objects.create(estado="PLANEADA")
+        d1 = self.crear_devolucion()
+        d2 = self.crear_devolucion()
+        cerrada_antes = Carga.objects.create(estado="CERRADA")
+
+        asignadas = asignar_a_carga_existente(destino, [d1, d2])
+        self.assertEqual(len(asignadas), 2)
+        d1.refresh_from_db()
+        self.assertEqual(d1.carga, destino)
+        self.assertEqual(d1.estado, "ASIGNADA")
+
+        from core.devoluciones_sf import AsignarDevolucionError
+
+        with self.assertRaises(AsignarDevolucionError):
+            asignar_a_carga_existente(cerrada_antes, [self.crear_devolucion()])
+
+    def test_crear_carga_con_devoluciones(self):
+        from core.devoluciones_sf import crear_carga_con_devoluciones
+
+        d1 = self.crear_devolucion()
+        carga, asignadas = crear_carga_con_devoluciones(
+            fecha_planeada=self.hoy,
+            ruta=self.ruta,
+            conductor=self.repartidor,
+            vehiculo=None,
+            km_inicial=None,
+            observaciones="",
+            devoluciones=[d1],
+        )
+        self.assertEqual(carga.devoluciones_sin_factura.count(), 1)
+        d1.refresh_from_db()
+        self.assertEqual(d1.estado, "ASIGNADA")
+        self.assertEqual(d1.carga, carga)
+
+    def test_accion_admin_agrupar_en_carga(self):
+        from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
+
+        d1 = self.crear_devolucion()
+        self.client.force_login(self.admin)
+        url = reverse("admin:core_devolucionsinfactura_changelist")
+        datos = {
+            "action": "agrupar_en_carga_devolucion",
+            ACTION_CHECKBOX_NAME: [d1.pk],
+        }
+        r = self.client.post(url, datos)
+        self.assertContains(r, "Agrupar devoluciones en una nueva Carga")
+        r = self.client.post(
+            url,
+            {
+                **datos,
+                "apply": "1",
+                "fecha_planeada": self.hoy.isoformat(),
+                "ruta": "",
+                "conductor": "",
+                "vehiculo": "",
+                "km_inicial": "",
+                "observaciones": "",
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        d1.refresh_from_db()
+        self.assertEqual(d1.estado, "ASIGNADA")
+        self.assertIsNotNone(d1.carga)
+
+    def test_accion_admin_agregar_a_carga_existente(self):
+        from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
+
+        destino = Carga.objects.create(estado="PLANEADA")
+        d1 = self.crear_devolucion()
+        self.client.force_login(self.admin)
+        url = reverse("admin:core_devolucionsinfactura_changelist")
+        datos = {
+            "action": "agregar_a_carga_existente_devolucion",
+            ACTION_CHECKBOX_NAME: [d1.pk],
+        }
+        r = self.client.post(url, datos)
+        self.assertContains(r, "Agregar devoluciones a una Carga existente")
+        self.assertContains(r, destino.codigo_reporte)
+        r = self.client.post(url, {**datos, "apply": "1", "carga_destino": destino.pk})
+        self.assertEqual(r.status_code, 302)
+        d1.refresh_from_db()
+        self.assertEqual(d1.carga, destino)
+        self.assertEqual(d1.estado, "ASIGNADA")
+
+
+class CapturaRepartidorDevolucionTests(DevolucionSinFacturaBase):
+    def setUp(self):
+        super().setUp()
+        self.carga = Carga.objects.create(
+            estado="EN_RUTA", ruta=self.ruta, conductor=self.repartidor,
+            salio_a_ruta_en=timezone.now(),
+        )
+        self.devolucion = self.crear_devolucion(carga=self.carga, estado="ASIGNADA")
+
+    def _entrar(self):
+        self.client.post(
+            reverse("entregas_acceso"),
+            {"codigo_carga": self.carga.codigo_acceso, "pin_repartidor": "4321"},
+        )
+
+    def test_registrar_captura(self):
+        from core.devoluciones_sf import registrar_captura
+
+        registrar_captura(
+            self.devolucion, cantidades={self.producto.id: Decimal("3")}, observaciones=""
+        )
+        self.devolucion.refresh_from_db()
+        self.assertEqual(self.devolucion.estado, "RECOLECTADA")
+        self.assertEqual(self.devolucion.detalles.count(), 1)
+        self.assertEqual(self.devolucion.detalles.first().cantidad_recolectada, Decimal("3"))
+
+    def test_registrar_captura_corrige_lineas_anteriores(self):
+        from core.devoluciones_sf import registrar_captura
+
+        registrar_captura(self.devolucion, cantidades={self.producto.id: Decimal("3")})
+        self.devolucion.refresh_from_db()
+        otro_producto = Producto.objects.create(codigo="P2", nombre="Producto 2")
+        registrar_captura(self.devolucion, cantidades={otro_producto.id: Decimal("2")})
+        self.assertEqual(self.devolucion.detalles.count(), 1)
+        self.assertEqual(self.devolucion.detalles.first().producto, otro_producto)
+
+    def test_vista_captura_requiere_sesion(self):
+        url = reverse("entregas_devolucion_sf", args=[self.carga.id, self.devolucion.id])
+        r = self.client.get(url)
+        self.assertEqual(r.status_code, 302)
+
+    def test_vista_captura_guarda(self):
+        self._entrar()
+        url = reverse("entregas_devolucion_sf", args=[self.carga.id, self.devolucion.id])
+        r = self.client.get(url)
+        self.assertEqual(r.status_code, 200)
+        r = self.client.post(
+            url,
+            {"producto_id": [str(self.producto.id)], "cantidad": ["4"], "observaciones": ""},
+        )
+        self.assertEqual(r.status_code, 302)
+        self.devolucion.refresh_from_db()
+        self.assertEqual(self.devolucion.estado, "RECOLECTADA")
+
+    def test_buscar_producto(self):
+        self._entrar()
+        url = reverse("entregas_devolucion_sf_buscar_producto", args=[self.carga.id])
+        r = self.client.get(url, {"q": self.producto.codigo})
+        self.assertEqual(r.status_code, 200)
+        datos = r.json()
+        self.assertEqual(len(datos["resultados"]), 1)
+        self.assertEqual(datos["resultados"][0]["id"], self.producto.id)
+
+    def test_lista_entregas_muestra_devolucion(self):
+        self._entrar()
+        r = self.client.get(reverse("entregas_lista", args=[self.carga.id]))
+        self.assertContains(r, self.devolucion.codigo_reporte)
+
+
+class RecepcionBodegaSinFacturaTests(DevolucionSinFacturaBase):
+    def setUp(self):
+        super().setUp()
+        self.carga = Carga.objects.create(
+            estado="RUTA_TERMINADA", ruta=self.ruta, conductor=self.repartidor,
+        )
+        self.devolucion = self.crear_devolucion(
+            carga=self.carga, estado="RECOLECTADA", recolectada_en=timezone.now()
+        )
+        self.linea = DevolucionSinFacturaDetalle.objects.create(
+            devolucion=self.devolucion, producto=self.producto, cantidad_recolectada=Decimal("5")
+        )
+
+    def test_resumen_pendiente(self):
+        from core.devoluciones_sf import resumen_recepcion_sin_factura
+
+        r = resumen_recepcion_sin_factura(self.carga)
+        self.assertEqual(r["estado"], "PENDIENTE")
+        self.assertEqual(r["productos"], 1)
+
+    def test_registrar_recepcion_completa(self):
+        from core.devoluciones_sf import registrar_recepcion_sin_factura, resumen_recepcion_sin_factura
+
+        registrar_recepcion_sin_factura(
+            self.carga,
+            usuario=self.bodega_user,
+            cantidades={self.linea.id: (Decimal("5"), Decimal("0"))},
+        )
+        self.devolucion.refresh_from_db()
+        self.assertEqual(self.devolucion.estado, "CERRADA")
+        self.assertEqual(self.devolucion.recibido_por, self.bodega_user)
+        r = resumen_recepcion_sin_factura(self.carga)
+        self.assertEqual(r["estado"], "COMPLETA")
+
+    def test_registrar_recepcion_con_diferencia_exige_observacion(self):
+        from core.devoluciones_sf import RecepcionSinFacturaError, registrar_recepcion_sin_factura
+
+        with self.assertRaises(RecepcionSinFacturaError):
+            registrar_recepcion_sin_factura(
+                self.carga,
+                usuario=self.bodega_user,
+                cantidades={self.linea.id: (Decimal("3"), Decimal("0"))},
+            )
+        registrar_recepcion_sin_factura(
+            self.carga,
+            usuario=self.bodega_user,
+            cantidades={self.linea.id: (Decimal("3"), Decimal("0"))},
+            observaciones="Faltó una unidad",
+        )
+        self.devolucion.refresh_from_db()
+        self.assertEqual(self.devolucion.estado, "CERRADA")
+
+    def test_resumen_combinado_incluye_carga_sin_entregas_con_factura(self):
+        from core.devoluciones_sf import cargas_para_bodega_combinado
+
+        pendientes, recibidas = cargas_para_bodega_combinado()
+        self.assertIn(self.carga, pendientes)
+
+    def test_vista_bodega_recepcion_confirma_sin_factura(self):
+        self.client.force_login(self.bodega_user)
+        url = reverse("bodega_recepcion", args=[self.carga.id])
+        r = self.client.get(url)
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, self.devolucion.codigo_reporte)
+        r = self.client.post(
+            url,
+            {
+                "seccion": "sf",
+                f"invsf_{self.linea.id}": "5",
+                f"mersf_{self.linea.id}": "0",
+                "observaciones_bodega_sf": "",
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        self.devolucion.refresh_from_db()
+        self.assertEqual(self.devolucion.estado, "CERRADA")
+
+    def test_vista_bodega_lista_muestra_carga_con_devolucion_sin_factura(self):
+        self.client.force_login(self.bodega_user)
+        r = self.client.get(reverse("bodega_lista"))
+        self.assertContains(r, self.carga.codigo_reporte)
+
+
+class ImprimirCargaConDevolucionSinFacturaTests(DevolucionSinFacturaBase):
+    def test_reporte_muestra_devolucion_asignada(self):
+        carga = Carga.objects.create(estado="PLANEADA", ruta=self.ruta)
+        self.crear_devolucion(carga=carga, estado="ASIGNADA")
+        self.client.force_login(self.admin)
+        r = self.client.get(reverse("admin:core_carga_imprimir", args=[carga.id]))
+        self.assertContains(r, "Devoluciones sin factura a recolectar en esta ruta")
+
+
+class PantallasVentasDevolucionesTests(DevolucionSinFacturaBase):
+    def test_acceso_sin_login(self):
+        r = self.client.get(reverse("devoluciones_sf_acceso"))
+        self.assertEqual(r.status_code, 200)
+
+    def test_solicitar_get_con_permiso(self):
+        self.client.force_login(self.ventas)
+        r = self.client.get(reverse("devoluciones_sf_solicitar"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Nueva solicitud")
+
+    def test_sin_permiso_muestra_aviso(self):
+        sin_permiso = User.objects.create_user("x2", password="x")
+        self.client.force_login(sin_permiso)
+        r = self.client.get(reverse("devoluciones_sf_solicitar"))
+        self.assertEqual(r.status_code, 403)
+        self.assertContains(r, "no tiene permiso", status_code=403)
