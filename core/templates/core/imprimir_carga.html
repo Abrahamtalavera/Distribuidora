@@ -305,6 +305,31 @@
           <td>{{ d.motivo }}</td>
           <td class="num">{{ d.total_unidades_estimado }}</td>
         </tr>
+        {% if d.detalles.all %}
+        <tr>
+          <td></td>
+          <td colspan="5" style="padding-top:0;">
+            <table style="width:100%; border-collapse:collapse; margin:2px 0 4px 0;">
+              <thead>
+                <tr>
+                  <th style="font-size:8.5px; color:#888; text-align:left; padding:2px 4px;">Producto recolectado</th>
+                  <th class="num" style="font-size:8.5px; color:#888; text-align:right; padding:2px 4px;">Cantidad</th>
+                  <th style="font-size:8.5px; color:#888; text-align:left; padding:2px 4px;">Motivo del producto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for det in d.detalles.all %}
+                <tr>
+                  <td style="padding:2px 4px;">{{ det.producto.nombre }}</td>
+                  <td class="num" style="padding:2px 4px;">{{ det.cantidad_recolectada }}</td>
+                  <td style="padding:2px 4px;">{{ det.motivo|default:"—" }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+        {% endif %}
         {% endfor %}
       </tbody>
     </table>

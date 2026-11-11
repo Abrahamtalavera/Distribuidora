@@ -586,7 +586,13 @@ class CargaAdmin(admin.ModelAdmin):
 class DevolucionSinFacturaDetalleInline(admin.TabularInline):
     model = models.DevolucionSinFacturaDetalle
     extra = 0
-    fields = ("producto", "cantidad_recolectada", "recibido_inventario", "recibido_merma")
+    fields = (
+        "producto",
+        "cantidad_recolectada",
+        "motivo",
+        "recibido_inventario",
+        "recibido_merma",
+    )
     readonly_fields = fields
     can_delete = False
 

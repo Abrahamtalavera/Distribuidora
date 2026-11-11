@@ -12,7 +12,10 @@ from core.importador_sucursales import (
     importar_excel as importar_excel_sucursales,
 )
 from core.cierre import resumen_cierre
-from core.devoluciones_sf import devoluciones_de_la_carga_para_repartidor
+from core.devoluciones_sf import (
+    detalles_sin_factura_de_la_carga,
+    devoluciones_de_la_carga_para_repartidor,
+)
 from core.models import Carga
 
 
@@ -97,7 +100,15 @@ def imprimir_carga_view(request, pk):
         return render(
             request,
             "core/imprimir_cierre.html",
-            {"carga": carga, "r": resumen_cierre(carga)},
+            {
+                "carga": carga,
+                "r": resumen_cierre(carga),
+                # Cambio #27.1: líneas de las devoluciones sin factura de
+                # esta carga, con el motivo por producto que agregó el
+                # entregador al recibirlo. No pasa por resumen_cierre()
+                # porque ese reporte es solo de las devoluciones CON factura.
+                "detalles_devoluciones_sf": detalles_sin_factura_de_la_carga(carga),
+            },
         )
     facturas = list(
         carga.facturas.select_related("cliente", "modalidad_pago", "sucursal").order_by(

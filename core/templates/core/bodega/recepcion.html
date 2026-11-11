@@ -121,7 +121,7 @@
           <table>
             <thead>
               <tr>
-                <th>Producto</th><th>Devolución</th><th>Sucursal</th><th>Motivo</th>
+                <th>Producto</th><th>Devolución</th><th>Sucursal</th><th>Motivo general</th><th>Motivo del producto</th>
                 <th class="r">Recolectado</th><th class="r">A inventario</th><th class="r">Merma</th><th class="r">Recibido</th><th class="r">Diferencia</th>
               </tr>
             </thead>
@@ -132,6 +132,7 @@
                 <td>{{ d.devolucion.codigo_reporte }}</td>
                 <td>{{ d.devolucion.sucursal.nombre }}</td>
                 <td>{{ d.devolucion.motivo|default:"—" }}</td>
+                <td>{{ d.motivo|default:"—" }}</td>
                 <td class="r">{{ d.cantidad_recolectada|cantidad }}</td>
                 {% if editando_sf %}
                   <td class="r"><input type="number" min="0" step="0.001" inputmode="decimal" class="in-num inv" name="invsf_{{ d.id }}" value="{{ d.valor_inv }}" placeholder="0"></td>
@@ -147,7 +148,7 @@
               </tr>
               {% endfor %}
               <tr class="tot">
-                <td colspan="4">Total</td>
+                <td colspan="5">Total</td>
                 <td class="r">{{ recepcion_sf.totales.reportado|cantidad }}</td>
                 {% if editando_sf %}
                   <td class="r" id="tInvSf">—</td><td class="r" id="tMerSf">—</td><td class="r" id="tRecSf">—</td><td class="r" id="tDifSf">—</td>

@@ -1206,22 +1206,48 @@ class CapturaRepartidorDevolucionTests(DevolucionSinFacturaBase):
         from core.devoluciones_sf import registrar_captura
 
         registrar_captura(
-            self.devolucion, cantidades={self.producto.id: Decimal("3")}, observaciones=""
+            self.devolucion,
+            cantidades={self.producto.id: Decimal("3")},
+            motivos={self.producto.id: self.motivo.id},
+            observaciones="",
         )
         self.devolucion.refresh_from_db()
         self.assertEqual(self.devolucion.estado, "RECOLECTADA")
         self.assertEqual(self.devolucion.detalles.count(), 1)
-        self.assertEqual(self.devolucion.detalles.first().cantidad_recolectada, Decimal("3"))
+        linea = self.devolucion.detalles.first()
+        self.assertEqual(linea.cantidad_recolectada, Decimal("3"))
+        self.assertEqual(linea.motivo, self.motivo)
+
+    def test_registrar_captura_exige_motivo_por_producto(self):
+        """Cambio #27.1: cada producto debe traer su motivo de devolución."""
+        from core.devoluciones_sf import SolicitudError, registrar_captura
+
+        with self.assertRaises(SolicitudError):
+            registrar_captura(
+                self.devolucion, cantidades={self.producto.id: Decimal("3")}, motivos={}
+            )
+        self.assertEqual(self.devolucion.detalles.count(), 0)
 
     def test_registrar_captura_corrige_lineas_anteriores(self):
         from core.devoluciones_sf import registrar_captura
 
-        registrar_captura(self.devolucion, cantidades={self.producto.id: Decimal("3")})
+        registrar_captura(
+            self.devolucion,
+            cantidades={self.producto.id: Decimal("3")},
+            motivos={self.producto.id: self.motivo.id},
+        )
         self.devolucion.refresh_from_db()
         otro_producto = Producto.objects.create(codigo="P2", nombre="Producto 2")
-        registrar_captura(self.devolucion, cantidades={otro_producto.id: Decimal("2")})
+        otro_motivo = MotivoDevolucion.objects.create(nombre="Otro motivo", activo=True)
+        registrar_captura(
+            self.devolucion,
+            cantidades={otro_producto.id: Decimal("2")},
+            motivos={otro_producto.id: otro_motivo.id},
+        )
         self.assertEqual(self.devolucion.detalles.count(), 1)
-        self.assertEqual(self.devolucion.detalles.first().producto, otro_producto)
+        linea = self.devolucion.detalles.first()
+        self.assertEqual(linea.producto, otro_producto)
+        self.assertEqual(linea.motivo, otro_motivo)
 
     def test_vista_captura_requiere_sesion(self):
         url = reverse("entregas_devolucion_sf", args=[self.carga.id, self.devolucion.id])
@@ -1233,13 +1259,38 @@ class CapturaRepartidorDevolucionTests(DevolucionSinFacturaBase):
         url = reverse("entregas_devolucion_sf", args=[self.carga.id, self.devolucion.id])
         r = self.client.get(url)
         self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Motivo de devolución")
         r = self.client.post(
             url,
-            {"producto_id": [str(self.producto.id)], "cantidad": ["4"], "observaciones": ""},
+            {
+                "producto_id": [str(self.producto.id)],
+                "cantidad": ["4"],
+                "motivo_id": [str(self.motivo.id)],
+                "observaciones": "",
+            },
         )
         self.assertEqual(r.status_code, 302)
         self.devolucion.refresh_from_db()
         self.assertEqual(self.devolucion.estado, "RECOLECTADA")
+        self.assertEqual(self.devolucion.detalles.first().motivo, self.motivo)
+
+    def test_vista_captura_exige_motivo(self):
+        """Cambio #27.1: sin motivo por producto, no se guarda la recolección."""
+        self._entrar()
+        url = reverse("entregas_devolucion_sf", args=[self.carga.id, self.devolucion.id])
+        r = self.client.post(
+            url,
+            {
+                "producto_id": [str(self.producto.id)],
+                "cantidad": ["4"],
+                "motivo_id": [""],
+                "observaciones": "",
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        self.devolucion.refresh_from_db()
+        self.assertEqual(self.devolucion.estado, "ASIGNADA")
+        self.assertEqual(self.devolucion.detalles.count(), 0)
 
     def test_buscar_producto(self):
         self._entrar()
@@ -1266,7 +1317,10 @@ class RecepcionBodegaSinFacturaTests(DevolucionSinFacturaBase):
             carga=self.carga, estado="RECOLECTADA", recolectada_en=timezone.now()
         )
         self.linea = DevolucionSinFacturaDetalle.objects.create(
-            devolucion=self.devolucion, producto=self.producto, cantidad_recolectada=Decimal("5")
+            devolucion=self.devolucion,
+            producto=self.producto,
+            cantidad_recolectada=Decimal("5"),
+            motivo=self.motivo,
         )
 
     def test_resumen_pendiente(self):
@@ -1320,6 +1374,7 @@ class RecepcionBodegaSinFacturaTests(DevolucionSinFacturaBase):
         r = self.client.get(url)
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, self.devolucion.codigo_reporte)
+        self.assertContains(r, self.motivo.nombre)
         r = self.client.post(
             url,
             {
@@ -1346,6 +1401,46 @@ class ImprimirCargaConDevolucionSinFacturaTests(DevolucionSinFacturaBase):
         self.client.force_login(self.admin)
         r = self.client.get(reverse("admin:core_carga_imprimir", args=[carga.id]))
         self.assertContains(r, "Devoluciones sin factura a recolectar en esta ruta")
+
+    def test_reporte_despacho_muestra_motivo_por_producto_ya_recolectado(self):
+        """Cambio #27.1: si ya se recolectó, el despacho muestra el motivo de cada producto."""
+        carga = Carga.objects.create(estado="EN_RUTA", ruta=self.ruta)
+        devolucion = self.crear_devolucion(
+            carga=carga, estado="RECOLECTADA", recolectada_en=timezone.now()
+        )
+        DevolucionSinFacturaDetalle.objects.create(
+            devolucion=devolucion,
+            producto=self.producto,
+            cantidad_recolectada=Decimal("3"),
+            motivo=self.motivo,
+        )
+        self.client.force_login(self.admin)
+        r = self.client.get(reverse("admin:core_carga_imprimir", args=[carga.id]))
+        self.assertContains(r, "Motivo del producto")
+        self.assertContains(r, self.motivo.nombre)
+
+    def test_reporte_cierre_muestra_devoluciones_sin_factura(self):
+        """Cambio #27.1: el reporte de cierre también lista el motivo por producto."""
+        carga = Carga.objects.create(estado="CERRADA", ruta=self.ruta)
+        devolucion = self.crear_devolucion(
+            carga=carga,
+            estado="CERRADA",
+            recolectada_en=timezone.now(),
+            recibido_en=timezone.now(),
+            recibido_por=self.bodega_user,
+        )
+        DevolucionSinFacturaDetalle.objects.create(
+            devolucion=devolucion,
+            producto=self.producto,
+            cantidad_recolectada=Decimal("3"),
+            recibido_inventario=Decimal("3"),
+            recibido_merma=Decimal("0"),
+            motivo=self.motivo,
+        )
+        self.client.force_login(self.admin)
+        r = self.client.get(reverse("admin:core_carga_imprimir", args=[carga.id]))
+        self.assertContains(r, "Devoluciones sin factura")
+        self.assertContains(r, self.motivo.nombre)
 
 
 class PantallasVentasDevolucionesTests(DevolucionSinFacturaBase):

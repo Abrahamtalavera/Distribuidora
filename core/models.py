@@ -947,6 +947,21 @@ class DevolucionSinFacturaDetalle(models.Model):
     )
     producto = models.ForeignKey("Producto", on_delete=models.PROTECT, related_name="+")
     cantidad_recolectada = models.DecimalField(max_digits=12, decimal_places=3)
+    # Cambio #27.1: motivo de devolución de este producto en particular,
+    # elegido por el entregador al recibirlo (del mismo catálogo que usa
+    # EntregaDetalle.motivo_devolucion, Cambio #9). Se deja null=True a nivel
+    # de base de datos solo por si existieran líneas capturadas antes de
+    # este ajuste; la pantalla del repartidor lo exige siempre para líneas
+    # nuevas.
+    motivo = models.ForeignKey(
+        "MotivoDevolucion",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="lineas_devolucion_sf",
+        verbose_name="Motivo de devolución",
+        help_text="Motivo de este producto en particular, agregado por el entregador al recibirlo.",
+    )
     # Cambio #27: lo que bodega de producto terminado recibió, separado por
     # destino, igual que en EntregaDetalle (Cambio #16).
     recibido_inventario = models.DecimalField(

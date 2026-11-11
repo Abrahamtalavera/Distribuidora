@@ -64,6 +64,9 @@
   var contador = 0;
 
   var previas = {{ lineas_previas_json|safe }};
+  var motivosDisponibles = [
+    {% for m in motivos %}{id: {{ m.id }}, nombre: "{{ m.nombre|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}
+  ];
 
   function escapar(s) {
     var d = document.createElement("div");
@@ -71,11 +74,20 @@
     return d.innerHTML;
   }
 
+  function opcionesMotivo(motivoIdSeleccionado) {
+    var html = '<option value="">Selecciona un motivo...</option>';
+    motivosDisponibles.forEach(function (m) {
+      var marcado = motivoIdSeleccionado && String(motivoIdSeleccionado) === String(m.id) ? " selected" : "";
+      html += '<option value="' + m.id + '"' + marcado + '>' + escapar(m.nombre) + '</option>';
+    });
+    return html;
+  }
+
   function actualizarVacio() {
     sinLineas.classList.toggle("oculto", filas.children.length > 0);
   }
 
-  function agregarFila(producto, cantidadInicial) {
+  function agregarFila(producto, cantidadInicial, motivoIdInicial) {
     if (agregados[producto.id]) {
       var existente = agregados[producto.id].querySelector("input.cant");
       existente.value = (parseFloat(existente.value || "0") + (cantidadInicial ? parseFloat(cantidadInicial) : 1));
@@ -91,7 +103,9 @@
         '<div class="cant-facturada">' + escapar(producto.codigo) + '</div></div>' +
         '<button type="button" class="btn-quitar" title="Quitar">&times;</button></div>' +
       '<div class="campo-cantidad" style="margin-top:8px;"><label>Cantidad recolectada</label>' +
-      '<input type="number" name="cantidad" class="cant" min="0" step="0.001" inputmode="decimal" value="' + (cantidadInicial || "1") + '"></div>';
+      '<input type="number" name="cantidad" class="cant" min="0" step="0.001" inputmode="decimal" value="' + (cantidadInicial || "1") + '"></div>' +
+      '<div class="campo-cantidad" style="margin-top:8px;"><label>Motivo de devolución</label>' +
+      '<select name="motivo_id" class="motivo-sel" required>' + opcionesMotivo(motivoIdInicial) + '</select></div>';
     fila.querySelector(".btn-quitar").addEventListener("click", function () {
       delete agregados[producto.id];
       fila.remove();
@@ -102,7 +116,7 @@
     actualizarVacio();
   }
 
-  previas.forEach(function (l) { agregarFila(l.producto, l.cantidad); });
+  previas.forEach(function (l) { agregarFila(l.producto, l.cantidad, l.motivo_id); });
 
   var temporizador = null;
   input.addEventListener("input", function () {

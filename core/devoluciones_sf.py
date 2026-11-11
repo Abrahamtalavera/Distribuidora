@@ -26,6 +26,7 @@ que se muestra junto al anterior en la misma pantalla de bodega.
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Prefetch
 from django.utils import timezone
 
 from core.bodega import ESTADOS_RECEPCION, ESTADOS_VISIBLES_BODEGA
@@ -160,10 +161,23 @@ def crear_carga_con_devoluciones(
 
 
 def devoluciones_de_la_carga_para_repartidor(carga):
-    """Devoluciones de esta Carga que el repartidor debe ver/capturar."""
+    """
+    Devoluciones de esta Carga que el repartidor debe ver/capturar. Trae
+    también sus líneas ya capturadas (con el motivo por producto, Cambio
+    #27.1) para que el reporte de despacho pueda mostrarlas si se reimprime
+    después de la recolección.
+    """
     return list(
         DevolucionSinFactura.objects.filter(carga=carga, estado__in=ESTADOS_PARA_REPARTIDOR)
         .select_related("sucursal__cliente", "motivo")
+        .prefetch_related(
+            Prefetch(
+                "detalles",
+                queryset=DevolucionSinFacturaDetalle.objects.select_related(
+                    "producto", "motivo"
+                ),
+            )
+        )
         .order_by("sucursal__cliente__nombre", "id")
     )
 
@@ -180,29 +194,44 @@ def devolucion_para_repartidor(carga, devolucion_id):
 
 
 @transaction.atomic
-def registrar_captura(devolucion, *, cantidades, observaciones=""):
+def registrar_captura(devolucion, *, cantidades, motivos=None, observaciones=""):
     """
     Guarda lo que el repartidor recolectó.
 
-    cantidades: {producto_id: cantidad_recolectada (Decimal > 0)}. Si la
-    devolución ya estaba en RECOLECTADA (el repartidor vuelve a corregir
-    antes de que bodega la reciba), se reemplazan las líneas anteriores.
+    cantidades: {producto_id: cantidad_recolectada (Decimal > 0)}.
+    motivos: {producto_id: motivo_id} — el motivo de devolución que el
+    entregador agrega a cada producto (Cambio #27.1); es obligatorio para
+    cada producto con cantidad > 0. Si la devolución ya estaba en
+    RECOLECTADA (el repartidor vuelve a corregir antes de que bodega la
+    reciba), se reemplazan las líneas anteriores.
     """
     if devolucion.estado not in ESTADOS_PARA_REPARTIDOR:
         raise SolicitudError("Esta devolución ya no se puede capturar.")
     if devolucion.carga_id is None:
         raise SolicitudError("Esta devolución no tiene carga asignada.")
 
+    motivos = motivos or {}
+
     if devolucion.estado == "RECOLECTADA":
         devolucion.detalles.all().delete()
 
-    lineas = [
-        DevolucionSinFacturaDetalle(
-            devolucion=devolucion, producto_id=producto_id, cantidad_recolectada=cantidad
+    lineas = []
+    for producto_id, cantidad in cantidades.items():
+        if not cantidad or cantidad <= 0:
+            continue
+        motivo_id = motivos.get(producto_id)
+        if not motivo_id:
+            raise SolicitudError(
+                "Falta elegir el motivo de devolución de uno o más productos."
+            )
+        lineas.append(
+            DevolucionSinFacturaDetalle(
+                devolucion=devolucion,
+                producto_id=producto_id,
+                cantidad_recolectada=cantidad,
+                motivo_id=motivo_id,
+            )
         )
-        for producto_id, cantidad in cantidades.items()
-        if cantidad and cantidad > 0
-    ]
     if not lineas:
         raise SolicitudError("Agrega al menos un producto con cantidad mayor que cero.")
     DevolucionSinFacturaDetalle.objects.bulk_create(lineas)
@@ -224,7 +253,9 @@ def detalles_sin_factura_de_la_carga(carga):
         DevolucionSinFacturaDetalle.objects.filter(
             devolucion__carga=carga, devolucion__estado__in=ESTADOS_CON_CAPTURA
         )
-        .select_related("devolucion__sucursal__cliente", "devolucion__motivo", "producto")
+        .select_related(
+            "devolucion__sucursal__cliente", "devolucion__motivo", "producto", "motivo"
+        )
         .order_by("devolucion__id", "id")
     )
 

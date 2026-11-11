@@ -17,7 +17,7 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_http_methods
 
 from core.devoluciones_sf import SolicitudError, devolucion_para_repartidor, registrar_captura
-from core.models import Producto
+from core.models import MotivoDevolucion, Producto
 from core.views_entregas import _carga_autorizada
 
 
@@ -50,11 +50,15 @@ def entregas_devolucion_sf_view(request, carga_id, devolucion_id):
         )
         return redirect("entregas_lista", carga_id=carga.id)
 
+    motivos = MotivoDevolucion.objects.filter(activo=True).order_by("nombre")
+
     if request.method == "POST":
         productos_ids = request.POST.getlist("producto_id")
         cantidades_crudas = request.POST.getlist("cantidad")
+        motivos_crudos = request.POST.getlist("motivo_id")
         cantidades = {}
-        for pid, crudo in zip(productos_ids, cantidades_crudas):
+        motivos_por_producto = {}
+        for pid, crudo, motivo_crudo in zip(productos_ids, cantidades_crudas, motivos_crudos):
             if not pid:
                 continue
             crudo = (crudo or "").strip()
@@ -63,12 +67,17 @@ def entregas_devolucion_sf_view(request, carga_id, devolucion_id):
             except InvalidOperation:
                 cantidad = Decimal("0")
             if cantidad > 0:
-                cantidades[int(pid)] = cantidades.get(int(pid), Decimal("0")) + cantidad
+                pid = int(pid)
+                cantidades[pid] = cantidades.get(pid, Decimal("0")) + cantidad
+                motivo_crudo = (motivo_crudo or "").strip()
+                if motivo_crudo.isdigit():
+                    motivos_por_producto[pid] = int(motivo_crudo)
 
         try:
             registrar_captura(
                 devolucion,
                 cantidades=cantidades,
+                motivos=motivos_por_producto,
                 observaciones=request.POST.get("observaciones", "").strip(),
             )
         except SolicitudError as exc:
@@ -90,8 +99,9 @@ def entregas_devolucion_sf_view(request, carga_id, devolucion_id):
                         "nombre": linea.producto.nombre,
                     },
                     "cantidad": _cantidad_plana(linea.cantidad_recolectada),
+                    "motivo_id": linea.motivo_id,
                 }
-                for linea in devolucion.detalles.all()
+                for linea in devolucion.detalles.select_related("producto")
             ]
         )
 
@@ -102,6 +112,7 @@ def entregas_devolucion_sf_view(request, carga_id, devolucion_id):
             "carga": carga,
             "devolucion": devolucion,
             "lineas_previas_json": lineas_previas_json,
+            "motivos": motivos,
         },
     )
 
