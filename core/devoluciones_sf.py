@@ -72,14 +72,22 @@ def puede_solicitar(usuario):
 
 
 def crear_solicitud(
-    *, fecha_ingreso, sucursal, total_unidades_estimado, contacto_sucursal, motivo,
-    observaciones="", usuario=None,
+    *, fecha_ingreso, sucursal, total_unidades_estimado, motivo, contacto=None,
+    contacto_sucursal="", cliente=None, observaciones="", usuario=None,
 ):
+    """
+    Cambio #29: guarda también el cliente (el de la sucursal si no se pasa)
+    y el contacto elegido de la lista; su nombre queda además como texto.
+    """
+    if cliente is not None and sucursal.cliente_id != cliente.id:
+        raise SolicitudError("Esa sucursal no es de este cliente.")
     return DevolucionSinFactura.objects.create(
         fecha_ingreso=fecha_ingreso,
+        cliente=cliente or sucursal.cliente,
         sucursal=sucursal,
         total_unidades_estimado=total_unidades_estimado,
-        contacto_sucursal=contacto_sucursal,
+        contacto=contacto,
+        contacto_sucursal=contacto.nombre if contacto else contacto_sucursal,
         motivo=motivo,
         observaciones=observaciones,
         creada_por=usuario if usuario and usuario.is_authenticated else None,
@@ -89,7 +97,7 @@ def crear_solicitud(
 def solicitudes_recientes(limite=50):
     return (
         DevolucionSinFactura.objects.select_related(
-            "sucursal__cliente", "motivo", "carga", "creada_por"
+            "cliente", "sucursal__cliente", "motivo", "carga", "creada_por"
         )
         .order_by("-creada_en")[:limite]
     )
@@ -276,7 +284,7 @@ def detalles_sin_factura_de_la_carga(carga):
             devolucion__carga=carga, devolucion__estado__in=ESTADOS_CON_CAPTURA
         )
         .select_related(
-            "devolucion__sucursal__cliente", "devolucion__motivo", "producto", "motivo",
+            "devolucion__sucursal__cliente", "devolucion__cliente", "devolucion__motivo", "producto", "motivo",
             "devolucion__revisada_cartera_por",
         )
         .order_by("devolucion__id", "id")

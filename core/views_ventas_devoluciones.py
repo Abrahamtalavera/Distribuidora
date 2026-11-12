@@ -62,9 +62,10 @@ def devoluciones_sf_solicitar_view(request):
         if form.is_valid():
             creada = crear_solicitud(
                 fecha_ingreso=form.cleaned_data["fecha_ingreso"],
+                cliente=form.cleaned_data["cliente"],
                 sucursal=form.cleaned_data["sucursal"],
                 total_unidades_estimado=form.cleaned_data["total_unidades_estimado"],
-                contacto_sucursal=form.cleaned_data["contacto_sucursal"],
+                contacto=form.cleaned_data["contacto"],
                 motivo=form.cleaned_data["motivo"],
                 observaciones=form.cleaned_data["observaciones"],
                 usuario=request.user,

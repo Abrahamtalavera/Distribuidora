@@ -430,6 +430,7 @@ def detalle_devoluciones(facturas, desde, hasta, ruta_id=None, incluir_sin_factu
                 "fecha": timezone.localtime(e.fecha_entrega).date(),
                 "cliente": f.cliente.nombre,
                 "sucursal": f.sucursal.nombre if f.sucursal_id else f.cliente.sucursal,
+                "contacto": "",
                 "ruta": carga.ruta.nombre if carga and carga.ruta_id else "",
                 "carga": carga.codigo_reporte if carga else "",
                 "repartidor": (
@@ -463,6 +464,7 @@ def detalle_devoluciones(facturas, desde, hasta, ruta_id=None, incluir_sin_factu
             )
             .select_related(
                 "devolucion__sucursal__cliente",
+                "devolucion__cliente",
                 "devolucion__carga__ruta",
                 "devolucion__carga__conductor",
                 "devolucion__revisada_cartera_por",
@@ -482,7 +484,8 @@ def detalle_devoluciones(facturas, desde, hasta, ruta_id=None, incluir_sin_factu
                     "documento": dev.codigo_reporte,
                     "doc_devolucion": "",
                     "fecha": dev.fecha_ingreso,
-                    "cliente": dev.sucursal.cliente.nombre,
+                    "cliente": (dev.cliente or dev.sucursal.cliente).nombre,
+                    "contacto": dev.contacto_sucursal,
                     "sucursal": dev.sucursal.nombre,
                     "ruta": carga.ruta.nombre if carga and carga.ruta_id else "",
                     "carga": carga.codigo_reporte if carga else "",
@@ -525,7 +528,7 @@ def _hoja_devoluciones(libro, devoluciones, titulo):
     hoja.append([])
     encabezados = [
         "Tipo", "Factura / devolución", "Doc. devolución", "Fecha", "Cliente", "Sucursal",
-        "Ruta", "Carga", "Repartidor", "Código", "Producto", "Motivo", "Área responsable",
+        "Contacto", "Ruta", "Carga", "Repartidor", "Código", "Producto", "Motivo", "Área responsable",
         "Lote", "Vencimiento", "Cantidad", "Valor devuelto", "A inventario", "Merma",
         "Bodega", "Cartera", "Revisado por", "Revisado el",
     ]
@@ -543,7 +546,7 @@ def _hoja_devoluciones(libro, devoluciones, titulo):
         hoja.append(
             [
                 d["tipo"], d["documento"], d["doc_devolucion"], d["fecha"], d["cliente"],
-                d["sucursal"], d["ruta"], d["carga"], d["repartidor"], d["codigo"],
+                d["sucursal"], d["contacto"], d["ruta"], d["carga"], d["repartidor"], d["codigo"],
                 d["producto"], d["motivo"], d["area"], d["lote"], d["fecha_vencimiento"],
                 num(d["cantidad"]), num(d["valor"]), num(d["inventario"]), num(d["merma"]),
                 d["bodega"], d["cartera"], d["cartera_por"],
@@ -552,13 +555,13 @@ def _hoja_devoluciones(libro, devoluciones, titulo):
         )
     for fila in hoja.iter_rows(min_row=4):
         fila[3].number_format = "DD/MM/YYYY"
-        fila[14].number_format = "DD/MM/YYYY"
-        fila[22].number_format = "DD/MM/YYYY HH:MM"
-        fila[15].number_format = "#,##0.###"
-        fila[16].number_format = "#,##0.00"
-        fila[17].number_format = "#,##0.###"
+        fila[15].number_format = "DD/MM/YYYY"
+        fila[23].number_format = "DD/MM/YYYY HH:MM"
+        fila[16].number_format = "#,##0.###"
+        fila[17].number_format = "#,##0.00"
         fila[18].number_format = "#,##0.###"
-    anchos = [12, 18, 14, 11, 30, 18, 16, 12, 20, 12, 30, 26, 18, 14, 12, 10, 13, 12, 10, 22, 20, 14, 16]
+        fila[19].number_format = "#,##0.###"
+    anchos = [12, 18, 14, 11, 30, 18, 20, 16, 12, 20, 12, 30, 26, 18, 14, 12, 10, 13, 12, 10, 22, 20, 14, 16]
     for i, ancho in enumerate(anchos, start=1):
         hoja.column_dimensions[get_column_letter(i)].width = ancho
     hoja.freeze_panes = "A4"

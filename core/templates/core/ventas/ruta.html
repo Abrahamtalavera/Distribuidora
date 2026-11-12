@@ -73,7 +73,7 @@
       <tr>
         <td><b>{{ d.documento }}</b><div class="detalle">{{ d.tipo }}{% if d.doc_devolucion %} · Doc. {{ d.doc_devolucion }}{% endif %}</div></td>
         <td>{{ d.fecha|date:"d/m/Y" }}</td>
-        <td>{{ d.cliente }}{% if d.sucursal %}<div class="detalle">{{ d.sucursal }}</div>{% endif %}</td>
+        <td>{{ d.cliente }}{% if d.sucursal %}<div class="detalle">{{ d.sucursal }}</div>{% endif %}{% if d.contacto %}<div class="detalle">Contacto: {{ d.contacto }}</div>{% endif %}</td>
         <td>{{ d.carga|default:"—" }}{% if d.repartidor %}<div class="detalle">{{ d.repartidor }}</div>{% endif %}</td>
         <td>{{ d.producto }}<div class="detalle">{{ d.codigo }}</div></td>
         <td>{{ d.motivo|default:"—" }}{% if d.area %}<div class="detalle">{{ d.area }}</div>{% endif %}</td>

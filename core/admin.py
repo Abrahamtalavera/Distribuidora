@@ -602,11 +602,38 @@ class DevolucionSinFacturaDetalleInline(admin.TabularInline):
         return False
 
 
+@admin.register(models.ContactoSucursal)
+class ContactoSucursalAdmin(admin.ModelAdmin):
+    """
+    Cambio #29: lista de contactos en las sucursales que ventas elige al
+    solicitar una devolución sin factura. Se agregan con "Añadir" y se
+    eliminan con la acción "Eliminar" (o se desactivan para ocultarlos).
+    """
+
+    list_display = ("nombre", "activo", "devoluciones")
+    list_editable = ("activo",)
+    list_filter = ("activo",)
+    search_fields = ("nombre",)
+    fields = ("nombre", "activo")
+
+    def get_queryset(self, request):
+        from django.db.models import Count
+
+        return super().get_queryset(request).annotate(
+            num_devoluciones=Count("devoluciones_sin_factura")
+        )
+
+    @admin.display(description="Devoluciones", ordering="num_devoluciones")
+    def devoluciones(self, obj):
+        return obj.num_devoluciones
+
+
 @admin.register(models.DevolucionSinFactura)
 class DevolucionSinFacturaAdmin(admin.ModelAdmin):
     list_display = (
         "codigo_reporte",
         "fecha_ingreso",
+        "cliente",
         "sucursal",
         "contacto_sucursal",
         "motivo",
@@ -617,11 +644,14 @@ class DevolucionSinFacturaAdmin(admin.ModelAdmin):
     list_filter = ("estado", "motivo__area_responsable")
     search_fields = (
         "sucursal__nombre",
+        "cliente__nombre",
+        "cliente__codigo",
         "sucursal__cliente__nombre",
         "sucursal__cliente__codigo",
         "contacto_sucursal",
     )
-    autocomplete_fields = ("sucursal",)
+    autocomplete_fields = ("cliente", "sucursal", "contacto")
+    list_select_related = ("cliente", "sucursal__cliente", "motivo", "carga")
     readonly_fields = (
         "estado",
         "carga",

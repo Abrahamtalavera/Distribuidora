@@ -5,13 +5,14 @@
   <h3>Todas las solicitudes</h3>
   <div class="scroll">
     <table>
-      <thead><tr><th>N.º</th><th>Fecha</th><th>Sucursal</th><th>Contacto</th><th>Unidades (est.)</th><th>Motivo</th><th>Estado</th><th>Carga</th></tr></thead>
+      <thead><tr><th>N.º</th><th>Fecha</th><th>Cliente</th><th>Sucursal</th><th>Contacto</th><th>Unidades (est.)</th><th>Motivo</th><th>Estado</th><th>Carga</th></tr></thead>
       <tbody>
         {% for d in solicitudes %}
         <tr>
           <td class="folio">{{ d.codigo_reporte }}</td>
           <td>{{ d.fecha_ingreso|date:"d/m/Y" }}</td>
-          <td>{{ d.sucursal }}</td>
+          <td>{{ d.cliente.nombre|default:d.sucursal.cliente.nombre }}</td>
+          <td>{{ d.sucursal.nombre }}</td>
           <td>{{ d.contacto_sucursal|default:"—" }}</td>
           <td class="r">{{ d.total_unidades_estimado }}</td>
           <td>{{ d.motivo }}</td>
@@ -19,7 +20,7 @@
           <td>{{ d.carga.codigo_reporte|default:"—" }}</td>
         </tr>
         {% empty %}
-        <tr><td colspan="8">Todavía no hay solicitudes.</td></tr>
+        <tr><td colspan="9">Todavía no hay solicitudes.</td></tr>
         {% endfor %}
       </tbody>
     </table>

@@ -869,6 +869,29 @@ class ParadaCliente(models.Model):
         return f"{self.cliente} · {self.carga.codigo_reporte}"
 
 
+class ContactoSucursal(models.Model):
+    """
+    Cambio #29: lista de contactos en las sucursales (la persona del cliente
+    que entrega la devolución). Ventas la elige al solicitar una devolución
+    sin factura. Se agregan y eliminan desde el admin; eliminar un contacto
+    no borra su nombre de las devoluciones que ya lo usaron.
+    """
+
+    nombre = models.CharField(max_length=150, unique=True, verbose_name="Nombre del contacto")
+    activo = models.BooleanField(
+        default=True, help_text="Desmárcalo para que ya no salga en la lista sin borrarlo."
+    )
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Contacto en sucursal"
+        verbose_name_plural = "Contactos en sucursales"
+        ordering = ["nombre"]
+
+    def __str__(self):
+        return self.nombre
+
+
 class DevolucionSinFactura(models.Model):
     """
     Cambio #27: devoluciones de producto que el cliente regresa sin que
@@ -892,6 +915,16 @@ class DevolucionSinFactura(models.Model):
     ]
 
     fecha_ingreso = models.DateField(verbose_name="Fecha de ingreso")
+    # Cambio #29: el cliente queda guardado en la devolución (antes solo se
+    # sabía por la sucursal). Se elige primero y la sucursal debe ser una de
+    # las suyas.
+    cliente = models.ForeignKey(
+        "Cliente",
+        null=True,
+        on_delete=models.PROTECT,
+        related_name="devoluciones_sin_factura",
+        verbose_name="Cliente",
+    )
     sucursal = models.ForeignKey(
         "Sucursal",
         on_delete=models.PROTECT,
@@ -902,11 +935,22 @@ class DevolucionSinFactura(models.Model):
         verbose_name="Total de unidades (estimado)",
         help_text="Lo que dice la persona de ventas al registrar la solicitud; el repartidor captura la cantidad real por producto.",
     )
+    # Cambio #29: el contacto se elige de la lista ContactoSucursal. El
+    # nombre también se guarda como texto (contacto_sucursal), así queda
+    # aunque luego se elimine el contacto de la lista.
+    contacto = models.ForeignKey(
+        "ContactoSucursal",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="devoluciones_sin_factura",
+        verbose_name="Contacto en la sucursal",
+    )
     contacto_sucursal = models.CharField(
         max_length=150,
         blank=True,
         verbose_name="Nombre de contacto en la sucursal",
-        help_text="Nombre de la persona de la sucursal que entrega la devolución (texto libre, no es un Vendedor).",
+        help_text="Nombre de la persona de la sucursal que entrega la devolución.",
     )
     motivo = models.ForeignKey(
         "MotivoDevolucion",
@@ -983,6 +1027,20 @@ class DevolucionSinFactura(models.Model):
 
     def __str__(self):
         return self.codigo_reporte
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if self.cliente_id and self.sucursal_id and self.sucursal.cliente_id != self.cliente_id:
+            raise ValidationError({"sucursal": "Esa sucursal no es de este cliente."})
+
+    def save(self, *args, **kwargs):
+        # Cambio #29: si no se eligió cliente, se toma el de la sucursal.
+        if self.sucursal_id and not self.cliente_id:
+            self.cliente_id = self.sucursal.cliente_id
+        if self.contacto_id and not self.contacto_sucursal:
+            self.contacto_sucursal = self.contacto.nombre
+        super().save(*args, **kwargs)
 
     @property
     def recibida_por_cartera(self):

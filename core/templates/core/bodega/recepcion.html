@@ -128,7 +128,7 @@
           <table>
             <thead>
               <tr>
-                <th>Producto</th><th>Devolución</th><th>Sucursal</th><th>Motivo general</th><th>Motivo del producto</th><th>Lote</th><th>Vence</th>
+                <th>Producto</th><th>Devolución</th><th>Cliente / sucursal</th><th>Motivo general</th><th>Motivo del producto</th><th>Lote</th><th>Vence</th>
                 <th class="r">Recolectado</th><th class="r">A inventario</th><th class="r">Merma</th><th class="r">Recibido</th><th class="r">Diferencia</th>
               </tr>
             </thead>
@@ -137,7 +137,7 @@
               <tr data-reportado="{{ d.cantidad_recolectada|plano_cant }}">
                 <td>{{ d.producto.nombre }}</td>
                 <td>{{ d.devolucion.codigo_reporte }}</td>
-                <td>{{ d.devolucion.sucursal.nombre }}</td>
+                <td>{{ d.devolucion.cliente.nombre|default:d.devolucion.sucursal.cliente.nombre }}<div style="font-size:11px;color:#757575;">{{ d.devolucion.sucursal.nombre }}</div></td>
                 <td>{{ d.devolucion.motivo|default:"—" }}</td>
                 <td>{{ d.motivo|default:"—" }}</td>
                 {% if editando_sf %}

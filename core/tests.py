@@ -1077,9 +1077,9 @@ class SolicitarDevolucionTests(DevolucionSinFacturaBase):
             reverse("devoluciones_sf_solicitar"),
             {
                 "fecha_ingreso": self.hoy.isoformat(),
+                "cliente": self.sucursal.cliente_id,
                 "sucursal": self.sucursal.pk,
                 "total_unidades_estimado": "12",
-                "contacto_sucursal": "Ana",
                 "motivo": self.motivo.pk,
                 "observaciones": "",
             },
@@ -1773,9 +1773,79 @@ class ConsultaRutaDevolucionesTests(Cambio28Base):
         libro = load_workbook(BytesIO(r.content))
         self.assertEqual(libro.sheetnames, ["Facturas", "Devoluciones"])
         hoja = libro["Devoluciones"]
-        lotes = sorted(fila[13] for fila in hoja.iter_rows(min_row=4, values_only=True))
+        lotes = sorted(fila[14] for fila in hoja.iter_rows(min_row=4, values_only=True))
         self.assertEqual(lotes, ["L-CF1", "L-CF2", "L-SF1"])
 
         # Con filtro de estado no salen las devoluciones sin factura.
         r = self.client.get(reverse("ventas_ruta"), dict(filtros, estado="CON_DEVOLUCION"))
         self.assertNotContains(r, "L-SF1")
+
+
+class ClienteYContactosDevolucionSFTests(DevolucionSinFacturaBase):
+    """Cambio #29: cliente guardado en la devolución y lista de contactos."""
+
+    def test_lista_inicial_de_contactos(self):
+        from core.models import ContactoSucursal
+
+        self.assertEqual(ContactoSucursal.objects.count(), 30)
+        self.assertTrue(ContactoSucursal.objects.filter(nombre="Jazmina Hernández").exists())
+
+    def test_solicitud_con_cliente_y_contacto(self):
+        from core.models import ContactoSucursal
+
+        contacto = ContactoSucursal.objects.get(nombre="Santos Ocampo")
+        self.client.force_login(self.ventas)
+        r = self.client.get(reverse("devoluciones_sf_solicitar"))
+        self.assertContains(r, "Santos Ocampo")
+        self.assertContains(r, f'data-cliente="{self.sucursal.cliente_id}"')
+        r = self.client.post(reverse("devoluciones_sf_solicitar"), {
+            "fecha_ingreso": self.hoy.isoformat(),
+            "cliente": self.sucursal.cliente_id,
+            "sucursal": self.sucursal.pk,
+            "total_unidades_estimado": "5",
+            "contacto": contacto.pk,
+            "motivo": self.motivo.pk,
+        })
+        self.assertEqual(r.status_code, 302)
+        d = DevolucionSinFactura.objects.get()
+        self.assertEqual(d.cliente, self.sucursal.cliente)
+        self.assertEqual(d.contacto, contacto)
+        self.assertEqual(d.contacto_sucursal, "Santos Ocampo")
+        r = self.client.get(reverse("devoluciones_sf_lista"))
+        self.assertContains(r, self.sucursal.cliente.nombre)
+        self.assertContains(r, "Santos Ocampo")
+
+        # Eliminar el contacto de la lista no borra el nombre de la devolución.
+        contacto.delete()
+        d.refresh_from_db()
+        self.assertIsNone(d.contacto)
+        self.assertEqual(d.contacto_sucursal, "Santos Ocampo")
+
+    def test_sucursal_de_otro_cliente_se_rechaza(self):
+        otro = Cliente.objects.create(codigo="C-OTRO", nombre="Otro cliente")
+        Sucursal.objects.create(cliente=otro, nombre="Otra sucursal")
+        self.client.force_login(self.ventas)
+        r = self.client.post(reverse("devoluciones_sf_solicitar"), {
+            "fecha_ingreso": self.hoy.isoformat(),
+            "cliente": otro.pk,
+            "sucursal": self.sucursal.pk,
+            "total_unidades_estimado": "5",
+            "motivo": self.motivo.pk,
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Esa sucursal no es de este cliente.")
+        self.assertEqual(DevolucionSinFactura.objects.count(), 0)
+
+    def test_cliente_se_toma_de_la_sucursal(self):
+        d = self.crear_devolucion()
+        self.assertEqual(d.cliente, self.sucursal.cliente)
+
+    def test_admin_de_contactos(self):
+        from core.models import ContactoSucursal
+
+        self.client.force_login(self.admin)
+        r = self.client.post(reverse("admin:core_contactosucursal_add"), {"nombre": "Nuevo Contacto", "activo": "on"})
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(ContactoSucursal.objects.filter(nombre="Nuevo Contacto").exists())
+        r = self.client.get(reverse("admin:core_contactosucursal_changelist"))
+        self.assertContains(r, "Nuevo Contacto")

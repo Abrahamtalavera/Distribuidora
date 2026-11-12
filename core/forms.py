@@ -48,6 +48,22 @@ class AgruparEnCargaForm(forms.Form):
         self.fields["fecha_planeada"].initial = timezone.localdate()
 
 
+class SucursalConClienteSelect(forms.Select):
+    """Cambio #29: cada sucursal lleva su cliente, para filtrarlas en pantalla."""
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        opcion = super().create_option(name, value, label, selected, index, subindex, attrs)
+        instancia = getattr(value, "instance", None)
+        if instancia is not None:
+            opcion["attrs"]["data-cliente"] = str(instancia.cliente_id)
+        return opcion
+
+
+class SucursalChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, obj):
+        return obj.nombre
+
+
 class SolicitarDevolucionSinFacturaForm(forms.Form):
     """Cambio #27: datos generales de una devolución sin factura (ventas)."""
 
@@ -55,18 +71,30 @@ class SolicitarDevolucionSinFacturaForm(forms.Form):
         label="Fecha de ingreso",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
     )
-    sucursal = forms.ModelChoiceField(
-        queryset=models.Sucursal.objects.filter(activo=True).select_related("cliente"),
+    # Cambio #29: primero el cliente; la sucursal es una de las suyas.
+    cliente = forms.ModelChoiceField(
+        queryset=models.Cliente.objects.filter(sucursales__activo=True)
+        .distinct()
+        .order_by("nombre"),
+        label="Cliente",
+    )
+    sucursal = SucursalChoiceField(
+        queryset=models.Sucursal.objects.filter(activo=True)
+        .select_related("cliente")
+        .order_by("nombre"),
         label="Sucursal a retirar",
+        widget=SucursalConClienteSelect,
     )
     total_unidades_estimado = forms.IntegerField(
         label="Total de unidades (estimado)", min_value=1
     )
-    contacto_sucursal = forms.CharField(
+    # Cambio #29: el contacto se elige de la lista de contactos en sucursales.
+    contacto = forms.ModelChoiceField(
+        queryset=models.ContactoSucursal.objects.filter(activo=True).order_by("nombre"),
         required=False,
-        max_length=150,
         label="Nombre de contacto en la sucursal",
-        help_text="Quien entrega la devolución en la sucursal (texto libre).",
+        empty_label="Elige el contacto...",
+        help_text="Quien entrega la devolución en la sucursal. Si no está en la lista, pide en oficina que lo agreguen.",
     )
     motivo = forms.ModelChoiceField(
         queryset=models.MotivoDevolucion.objects.filter(activo=True).order_by("nombre"),
@@ -79,3 +107,10 @@ class SolicitarDevolucionSinFacturaForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["fecha_ingreso"].initial = timezone.localdate()
+
+    def clean(self):
+        datos = super().clean()
+        cliente, sucursal = datos.get("cliente"), datos.get("sucursal")
+        if cliente and sucursal and sucursal.cliente_id != cliente.id:
+            self.add_error("sucursal", "Esa sucursal no es de este cliente.")
+        return datos

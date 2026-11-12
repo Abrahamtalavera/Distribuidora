@@ -10,9 +10,17 @@
       {{ form.fecha_ingreso }}
       {{ form.fecha_ingreso.errors }}
     </div>
+    {# Cambio #29: primero el cliente; la lista de sucursales se filtra a las suyas. #}
+    <div class="campo">
+      <label for="{{ form.cliente.id_for_label }}">{{ form.cliente.label }}</label>
+      <input type="search" id="buscarCliente" placeholder="Buscar cliente por nombre o código" autocomplete="off" style="margin-bottom:6px;">
+      {{ form.cliente }}
+      {{ form.cliente.errors }}
+    </div>
     <div class="campo">
       <label for="{{ form.sucursal.id_for_label }}">{{ form.sucursal.label }}</label>
       {{ form.sucursal }}
+      <div class="ayuda" id="ayudaSucursal">Elige primero el cliente.</div>
       {{ form.sucursal.errors }}
     </div>
     <div class="campo">
@@ -21,10 +29,10 @@
       {{ form.total_unidades_estimado.errors }}
     </div>
     <div class="campo">
-      <label for="{{ form.contacto_sucursal.id_for_label }}">{{ form.contacto_sucursal.label }}</label>
-      {{ form.contacto_sucursal }}
-      <div class="ayuda">{{ form.contacto_sucursal.help_text }}</div>
-      {{ form.contacto_sucursal.errors }}
+      <label for="{{ form.contacto.id_for_label }}">{{ form.contacto.label }}</label>
+      {{ form.contacto }}
+      <div class="ayuda">{{ form.contacto.help_text }}</div>
+      {{ form.contacto.errors }}
     </div>
     <div class="campo">
       <label for="{{ form.motivo.id_for_label }}">{{ form.motivo.label }}</label>
@@ -46,23 +54,77 @@
   <h3>Últimas solicitudes</h3>
   <div class="scroll">
     <table>
-      <thead><tr><th>N.º</th><th>Fecha</th><th>Sucursal</th><th>Unidades (est.)</th><th>Motivo</th><th>Estado</th><th>Carga</th></tr></thead>
+      <thead><tr><th>N.º</th><th>Fecha</th><th>Cliente</th><th>Sucursal</th><th>Contacto</th><th>Unidades (est.)</th><th>Motivo</th><th>Estado</th><th>Carga</th></tr></thead>
       <tbody>
         {% for d in recientes %}
         <tr>
           <td class="folio">{{ d.codigo_reporte }}</td>
           <td>{{ d.fecha_ingreso|date:"d/m/Y" }}</td>
-          <td>{{ d.sucursal }}</td>
+          <td>{{ d.cliente.nombre|default:d.sucursal.cliente.nombre }}</td>
+          <td>{{ d.sucursal.nombre }}</td>
+          <td>{{ d.contacto_sucursal|default:"—" }}</td>
           <td class="r">{{ d.total_unidades_estimado }}</td>
           <td>{{ d.motivo }}</td>
           <td><span class="badge-estado badge-{{ d.estado_css }}">{{ d.estado_mostrar }}</span></td>
           <td>{{ d.carga.codigo_reporte|default:"—" }}</td>
         </tr>
         {% empty %}
-        <tr><td colspan="7">Todavía no hay solicitudes.</td></tr>
+        <tr><td colspan="9">Todavía no hay solicitudes.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var cliente = document.getElementById("{{ form.cliente.id_for_label }}");
+  var sucursal = document.getElementById("{{ form.sucursal.id_for_label }}");
+  var buscar = document.getElementById("buscarCliente");
+  var ayuda = document.getElementById("ayudaSucursal");
+  if (!cliente || !sucursal) return;
+  var opcionesClientes = Array.prototype.slice.call(cliente.options);
+  var opcionesSucursales = Array.prototype.slice.call(sucursal.options);
+
+  function filtrarSucursales() {
+    var id = cliente.value;
+    var visibles = 0, unica = null;
+    opcionesSucursales.forEach(function (o) {
+      if (!o.value) return;
+      var mostrar = !!id && o.getAttribute("data-cliente") === id;
+      o.hidden = !mostrar; o.disabled = !mostrar;
+      if (mostrar) { visibles++; unica = o; }
+    });
+    var actual = sucursal.options[sucursal.selectedIndex];
+    if (actual && actual.value && actual.disabled) sucursal.value = "";
+    if (visibles === 1 && !sucursal.value) sucursal.value = unica.value;
+    sucursal.disabled = !id;
+    ayuda.textContent = !id ? "Elige primero el cliente."
+      : visibles === 0 ? "Este cliente no tiene sucursales activas."
+      : visibles + " sucursal" + (visibles === 1 ? "" : "es") + " de este cliente.";
+  }
+
+  buscar.addEventListener("input", function () {
+    var q = buscar.value.trim().toLowerCase();
+    var primera = null;
+    opcionesClientes.forEach(function (o) {
+      if (!o.value) return;
+      var ok = !q || o.text.toLowerCase().indexOf(q) !== -1;
+      o.hidden = !ok;
+      if (ok && !primera) primera = o;
+    });
+    var actual = cliente.options[cliente.selectedIndex];
+    if (q && primera && (!actual || !actual.value || actual.hidden)) {
+      cliente.value = primera.value;
+      filtrarSucursales();
+    }
+  });
+  cliente.addEventListener("change", filtrarSucursales);
+  // Al enviar, la sucursal debe ir aunque la lista esté deshabilitada momentáneamente.
+  sucursal.form.addEventListener("submit", function () { sucursal.disabled = false; });
+  filtrarSucursales();
+})();
+</script>
 {% endblock %}
