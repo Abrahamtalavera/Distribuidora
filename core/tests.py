@@ -11,6 +11,7 @@ from core.models import (
     CargaCuadre,
     CarteraCobro,
     Cliente,
+    ContactoSucursal,
     DevolucionSinFactura,
     DevolucionSinFacturaDetalle,
     Entrega,
@@ -1080,6 +1081,7 @@ class SolicitarDevolucionTests(DevolucionSinFacturaBase):
                 "cliente": self.sucursal.cliente_id,
                 "sucursal": self.sucursal.pk,
                 "total_unidades_estimado": "12",
+                "contacto": ContactoSucursal.objects.first().pk,
                 "motivo": self.motivo.pk,
                 "observaciones": "",
             },
@@ -1834,6 +1836,18 @@ class ClienteYContactosDevolucionSFTests(DevolucionSinFacturaBase):
         })
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Esa sucursal no es de este cliente.")
+        self.assertEqual(DevolucionSinFactura.objects.count(), 0)
+
+    def test_contacto_obligatorio(self):
+        self.client.force_login(self.ventas)
+        r = self.client.post(reverse("devoluciones_sf_solicitar"), {
+            "fecha_ingreso": self.hoy.isoformat(),
+            "cliente": self.sucursal.cliente_id,
+            "sucursal": self.sucursal.pk,
+            "total_unidades_estimado": "5",
+            "motivo": self.motivo.pk,
+        })
+        self.assertContains(r, "Elige el contacto de la sucursal.")
         self.assertEqual(DevolucionSinFactura.objects.count(), 0)
 
     def test_cliente_se_toma_de_la_sucursal(self):

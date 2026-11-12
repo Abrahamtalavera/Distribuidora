@@ -91,10 +91,10 @@ class SolicitarDevolucionSinFacturaForm(forms.Form):
     # Cambio #29: el contacto se elige de la lista de contactos en sucursales.
     contacto = forms.ModelChoiceField(
         queryset=models.ContactoSucursal.objects.filter(activo=True).order_by("nombre"),
-        required=False,
         label="Nombre de contacto en la sucursal",
+        error_messages={"required": "Elige el contacto de la sucursal."},
         empty_label="Elige el contacto...",
-        help_text="Quien entrega la devolución en la sucursal. Si no está en la lista, pide en oficina que lo agreguen.",
+        help_text="Obligatorio: quien entrega la devolución en la sucursal. Si no está en la lista, pide en oficina que lo agreguen.",
     )
     motivo = forms.ModelChoiceField(
         queryset=models.MotivoDevolucion.objects.filter(activo=True).order_by("nombre"),
