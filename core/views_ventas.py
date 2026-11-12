@@ -21,7 +21,9 @@ from core.consulta import (
     FILTROS_ESTADO,
     MAX_DIAS_LISTADO,
     MAX_FILAS_LISTADO,
+    MAX_FILAS_DEVOLUCIONES_PANTALLA,
     buscar_facturas,
+    detalle_devoluciones,
     detalle_factura,
     excel_listado,
     listado,
@@ -136,6 +138,12 @@ def ventas_ruta_view(request):
         filtros["desde"], filtros["hasta"], filtros["ruta_id"],
         filtros["vendedor_id"], filtros["estado"],
     )
+    # Cambio #28: detalle de las devoluciones (producto, motivo, lote,
+    # vencimiento, bodega y cartera) de lo que muestra el listado.
+    devoluciones = detalle_devoluciones(
+        facturas, filtros["desde"], filtros["hasta"], filtros["ruta_id"],
+        incluir_sin_factura=not (filtros["vendedor_id"] or filtros["estado"]),
+    )
     contexto = _contexto_base(request, "ruta")
     contexto.update(filtros)
     contexto.update(
@@ -148,6 +156,10 @@ def ventas_ruta_view(request):
             "vendedores": Vendedor.objects.filter(tipo="VENDEDOR").order_by("nombre"),
             "estados": [(clave, nombre) for clave, (nombre, _) in FILTROS_ESTADO.items()],
             "consulta": request.GET.urlencode(),
+            "devoluciones": devoluciones[:MAX_FILAS_DEVOLUCIONES_PANTALLA],
+            "total_devoluciones": len(devoluciones),
+            "max_devoluciones": MAX_FILAS_DEVOLUCIONES_PANTALLA,
+            "sin_factura_excluidas": bool(filtros["vendedor_id"] or filtros["estado"]),
         }
     )
     return render(request, "core/ventas/ruta.html", contexto)
@@ -165,7 +177,11 @@ def ventas_ruta_excel_view(request):
         f"Facturas {ruta.nombre if ruta else 'todas las rutas'} · "
         f"{filtros['desde']:%d/%m/%Y} al {filtros['hasta']:%d/%m/%Y}"
     )
-    contenido = excel_listado(facturas, titulo)
+    devoluciones = detalle_devoluciones(
+        facturas, filtros["desde"], filtros["hasta"], filtros["ruta_id"],
+        incluir_sin_factura=not (filtros["vendedor_id"] or filtros["estado"]),
+    )
+    contenido = excel_listado(facturas, titulo, devoluciones)
     nombre = f"facturas_{filtros['desde']:%Y%m%d}_{filtros['hasta']:%Y%m%d}.xlsx"
     respuesta = HttpResponse(
         contenido,

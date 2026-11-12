@@ -1736,3 +1736,46 @@ class CarteraTests(Cambio28Base):
         r = self.client.get(reverse("admin:core_carga_cierre", args=[carga.id]))
         self.assertContains(r, "Devoluciones sin factura")
         self.assertContains(r, "L-9")
+
+
+class ConsultaRutaDevolucionesTests(Cambio28Base):
+    """Cambio #28: detalle de devoluciones en la consulta por ruta (pantalla y Excel)."""
+
+    def setUp(self):
+        super().setUp()
+        self.ventas_consulta = User.objects.create_user("consulta1", password="x")
+        self.ventas_consulta.groups.add(Group.objects.get(name="Ventas"))
+
+    def test_pantalla_y_excel_traen_el_detalle(self):
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        self.entrega_con_devolucion(
+            [
+                {"cantidad": "4", "motivo_id": self.motivo.id, "lote": "L-CF1", "fecha_vencimiento": self.vence.isoformat()},
+                {"cantidad": "2", "motivo_id": self.otro_motivo.id, "lote": "L-CF2"},
+            ]
+        )
+        dev = self.crear_devolucion(carga=self.carga, estado="RECOLECTADA", recolectada_en=timezone.now())
+        DevolucionSinFacturaDetalle.objects.create(
+            devolucion=dev, producto=self.producto, cantidad_recolectada=Decimal("3"),
+            motivo=self.motivo, lote="L-SF1",
+        )
+        self.client.force_login(self.ventas_consulta)
+        filtros = {"ruta": self.ruta.id, "desde": self.hoy.isoformat(), "hasta": self.hoy.isoformat()}
+        r = self.client.get(reverse("ventas_ruta"), filtros)
+        self.assertContains(r, "Detalle de devoluciones (3 productos)")
+        for texto in ("L-CF1", "L-CF2", "L-SF1", dev.codigo_reporte, self.otro_motivo.nombre):
+            self.assertContains(r, texto)
+
+        r = self.client.get(reverse("ventas_ruta_excel"), filtros)
+        libro = load_workbook(BytesIO(r.content))
+        self.assertEqual(libro.sheetnames, ["Facturas", "Devoluciones"])
+        hoja = libro["Devoluciones"]
+        lotes = sorted(fila[13] for fila in hoja.iter_rows(min_row=4, values_only=True))
+        self.assertEqual(lotes, ["L-CF1", "L-CF2", "L-SF1"])
+
+        # Con filtro de estado no salen las devoluciones sin factura.
+        r = self.client.get(reverse("ventas_ruta"), dict(filtros, estado="CON_DEVOLUCION"))
+        self.assertNotContains(r, "L-SF1")

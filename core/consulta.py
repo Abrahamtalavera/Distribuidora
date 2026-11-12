@@ -373,8 +373,203 @@ def ruta_de(factura):
     return ""
 
 
-def excel_listado(facturas, titulo):
-    """Archivo .xlsx (bytes) con el listado, para descargar."""
+MAX_FILAS_DEVOLUCIONES_PANTALLA = 300
+
+
+def _estado_bodega(d):
+    if not d.recepcion_registrada:
+        return "Pendiente de recibir"
+    if d.diferencia_recepcion:
+        return "Recibida con diferencia"
+    return "Recibida"
+
+
+def detalle_devoluciones(facturas, desde, hasta, ruta_id=None, incluir_sin_factura=True):
+    """
+    Cambio #28: una fila por producto devuelto, para la consulta por ruta de
+    ventas y su Excel.
+
+    - Con factura: lo devuelto en las visitas de las facturas del listado.
+    - Sin factura (Cambio #27): las devoluciones con fecha de ingreso en el
+      período (de esa ruta si se eligió una) que el repartidor ya recolectó.
+      No dependen de un vendedor ni del estado de una factura, así que no
+      salen cuando se filtra por esos datos (incluir_sin_factura=False).
+    """
+    from core.entregas import valor_unitario
+    from core.models import DevolucionSinFacturaDetalle
+
+    filas = []
+    ids = [f.id for f in facturas]
+    lineas = (
+        EntregaDetalle.objects.filter(
+            entrega__factura_id__in=ids, entrega__estado="CONFIRMADA", cantidad_devuelta__gt=0
+        )
+        .select_related(
+            "entrega__factura__cliente",
+            "entrega__factura__sucursal",
+            "entrega__carga__ruta",
+            "entrega__carga__conductor",
+            "entrega__repartidor",
+            "entrega__revisada_cartera_por",
+            "entrega__motivo_devolucion_general__area_responsable",
+            "factura_detalle__producto",
+            "motivo_devolucion__area_responsable",
+        )
+        .order_by("-entrega__fecha_entrega", "entrega__factura__numero_factura", "id")
+    )
+    for d in lineas:
+        e = d.entrega
+        f = e.factura
+        motivo = d.motivo_devolucion or e.motivo_devolucion_general
+        carga = e.carga
+        filas.append(
+            {
+                "tipo": "Con factura",
+                "documento": f.numero_factura,
+                "doc_devolucion": e.documento_devolucion,
+                "fecha": timezone.localtime(e.fecha_entrega).date(),
+                "cliente": f.cliente.nombre,
+                "sucursal": f.sucursal.nombre if f.sucursal_id else f.cliente.sucursal,
+                "ruta": carga.ruta.nombre if carga and carga.ruta_id else "",
+                "carga": carga.codigo_reporte if carga else "",
+                "repartidor": (
+                    e.repartidor.nombre if e.repartidor_id
+                    else (carga.conductor.nombre if carga and carga.conductor_id else "")
+                ),
+                "codigo": d.factura_detalle.producto.codigo,
+                "producto": d.factura_detalle.producto.nombre,
+                "motivo": motivo.nombre if motivo else "",
+                "area": motivo.area_responsable.nombre if motivo and motivo.area_responsable else "",
+                "lote": d.lote,
+                "fecha_vencimiento": d.fecha_vencimiento,
+                "esta_vencido": d.esta_vencido,
+                "cantidad": d.cantidad_devuelta,
+                "valor": _r(d.cantidad_devuelta * valor_unitario(d.factura_detalle)),
+                "inventario": d.recibido_inventario,
+                "merma": d.recibido_merma,
+                "bodega": _estado_bodega(d),
+                "cartera": "Recibido por cartera" if e.revisada_cartera_en else "Pendiente",
+                "cartera_por": e.revisada_cartera_por.get_username() if e.revisada_cartera_por_id else "",
+                "cartera_en": e.revisada_cartera_en,
+            }
+        )
+
+    if incluir_sin_factura:
+        detalles = (
+            DevolucionSinFacturaDetalle.objects.filter(
+                devolucion__fecha_ingreso__gte=desde,
+                devolucion__fecha_ingreso__lte=hasta,
+                devolucion__estado__in=("RECOLECTADA", "CERRADA"),
+            )
+            .select_related(
+                "devolucion__sucursal__cliente",
+                "devolucion__carga__ruta",
+                "devolucion__carga__conductor",
+                "devolucion__revisada_cartera_por",
+                "producto",
+                "motivo__area_responsable",
+            )
+            .order_by("-devolucion__fecha_ingreso", "devolucion_id", "id")
+        )
+        if ruta_id:
+            detalles = detalles.filter(devolucion__carga__ruta_id=ruta_id)
+        for d in detalles:
+            dev = d.devolucion
+            carga = dev.carga
+            filas.append(
+                {
+                    "tipo": "Sin factura",
+                    "documento": dev.codigo_reporte,
+                    "doc_devolucion": "",
+                    "fecha": dev.fecha_ingreso,
+                    "cliente": dev.sucursal.cliente.nombre,
+                    "sucursal": dev.sucursal.nombre,
+                    "ruta": carga.ruta.nombre if carga and carga.ruta_id else "",
+                    "carga": carga.codigo_reporte if carga else "",
+                    "repartidor": carga.conductor.nombre if carga and carga.conductor_id else "",
+                    "codigo": d.producto.codigo,
+                    "producto": d.producto.nombre,
+                    "motivo": d.motivo.nombre if d.motivo_id else "",
+                    "area": (
+                        d.motivo.area_responsable.nombre
+                        if d.motivo_id and d.motivo.area_responsable else ""
+                    ),
+                    "lote": d.lote,
+                    "fecha_vencimiento": d.fecha_vencimiento,
+                    "esta_vencido": d.esta_vencido,
+                    "cantidad": d.cantidad_recolectada,
+                    "valor": None,
+                    "inventario": d.recibido_inventario,
+                    "merma": d.recibido_merma,
+                    "bodega": _estado_bodega(d),
+                    "cartera": "Recibido por cartera" if dev.revisada_cartera_en else "Pendiente",
+                    "cartera_por": (
+                        dev.revisada_cartera_por.get_username() if dev.revisada_cartera_por_id else ""
+                    ),
+                    "cartera_en": dev.revisada_cartera_en,
+                }
+            )
+
+    filas.sort(key=lambda x: x["fecha"], reverse=True)
+    return filas
+
+
+def _hoja_devoluciones(libro, devoluciones, titulo):
+    """Cambio #28: hoja "Devoluciones" del Excel de la consulta por ruta."""
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    hoja = libro.create_sheet("Devoluciones")
+    hoja.append([f"Devoluciones · {titulo}"])
+    hoja["A1"].font = Font(bold=True, size=13)
+    hoja.append([])
+    encabezados = [
+        "Tipo", "Factura / devolución", "Doc. devolución", "Fecha", "Cliente", "Sucursal",
+        "Ruta", "Carga", "Repartidor", "Código", "Producto", "Motivo", "Área responsable",
+        "Lote", "Vencimiento", "Cantidad", "Valor devuelto", "A inventario", "Merma",
+        "Bodega", "Cartera", "Revisado por", "Revisado el",
+    ]
+    hoja.append(encabezados)
+    relleno = PatternFill("solid", fgColor="417690")
+    for celda in hoja[3]:
+        celda.font = Font(bold=True, color="FFFFFF")
+        celda.fill = relleno
+        celda.alignment = Alignment(vertical="center")
+
+    def num(v):
+        return float(v) if v is not None else None
+
+    for d in devoluciones:
+        hoja.append(
+            [
+                d["tipo"], d["documento"], d["doc_devolucion"], d["fecha"], d["cliente"],
+                d["sucursal"], d["ruta"], d["carga"], d["repartidor"], d["codigo"],
+                d["producto"], d["motivo"], d["area"], d["lote"], d["fecha_vencimiento"],
+                num(d["cantidad"]), num(d["valor"]), num(d["inventario"]), num(d["merma"]),
+                d["bodega"], d["cartera"], d["cartera_por"],
+                timezone.localtime(d["cartera_en"]).replace(tzinfo=None) if d["cartera_en"] else None,
+            ]
+        )
+    for fila in hoja.iter_rows(min_row=4):
+        fila[3].number_format = "DD/MM/YYYY"
+        fila[14].number_format = "DD/MM/YYYY"
+        fila[22].number_format = "DD/MM/YYYY HH:MM"
+        fila[15].number_format = "#,##0.###"
+        fila[16].number_format = "#,##0.00"
+        fila[17].number_format = "#,##0.###"
+        fila[18].number_format = "#,##0.###"
+    anchos = [12, 18, 14, 11, 30, 18, 16, 12, 20, 12, 30, 26, 18, 14, 12, 10, 13, 12, 10, 22, 20, 14, 16]
+    for i, ancho in enumerate(anchos, start=1):
+        hoja.column_dimensions[get_column_letter(i)].width = ancho
+    hoja.freeze_panes = "A4"
+    hoja.auto_filter.ref = f"A3:{get_column_letter(len(encabezados))}{max(hoja.max_row, 3)}"
+
+
+def excel_listado(facturas, titulo, devoluciones=None):
+    """
+    Archivo .xlsx (bytes) con el listado, para descargar. Con `devoluciones`
+    (Cambio #28) agrega la hoja "Devoluciones" con su detalle.
+    """
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
@@ -429,6 +624,9 @@ def excel_listado(facturas, titulo):
         hoja.column_dimensions[get_column_letter(i)].width = ancho
     hoja.freeze_panes = "A4"
     hoja.auto_filter.ref = f"A3:{get_column_letter(len(encabezados))}{hoja.max_row}"
+
+    if devoluciones is not None:
+        _hoja_devoluciones(libro, devoluciones, titulo)
 
     salida = BytesIO()
     libro.save(salida)
