@@ -7,6 +7,7 @@ from django.urls import path
 
 from core import (
     views_bodega,
+    views_cartera,
     views_cierre,
     views_entregas,
     views_entregas_devolucion_sf,
@@ -71,6 +72,15 @@ urlpatterns = [
     path("tablero/cargas/", views_tablero.tablero_cargas_view, name="tablero_cargas"),
     path("tablero/acceso/", views_tablero.TableroLoginView.as_view(), name="tablero_acceso"),
     path("tablero/salir/", views_tablero.tablero_salir_view, name="tablero_salir"),
+    # Cambio #28: revisión de devoluciones por cartera.
+    path("cartera/", views_cartera.cartera_lista_view, name="cartera_lista"),
+    path("cartera/acceso/", views_cartera.CarteraLoginView.as_view(), name="cartera_acceso"),
+    path("cartera/salir/", views_cartera.cartera_salir_view, name="cartera_salir"),
+    path(
+        "cartera/enterado/<str:tipo>/<int:objeto_id>/",
+        views_cartera.cartera_enterado_view,
+        name="cartera_enterado",
+    ),
     # Cambio #21: consulta del equipo de ventas.
     path("ventas/", views_ventas.ventas_buscar_view, name="ventas_buscar"),
     path("ventas/factura/<int:factura_id>/", views_ventas.ventas_factura_view, name="ventas_factura"),

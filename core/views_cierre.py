@@ -25,6 +25,7 @@ from core.cierre import (
     resumen_cierre,
     terminar_ruta,
 )
+from core.devoluciones_sf import detalles_sin_factura_de_la_carga
 from core.models import Carga
 from core.views_entregas import _carga_autorizada
 
@@ -146,6 +147,8 @@ def cierre_carga_view(request, pk):
             "carga": carga,
             "r": r,
             "obs_escrita": escrito.get("observaciones", carga.observaciones_cierre),
+            # Cambio #28: también las devoluciones sin factura de la carga.
+            "detalles_devoluciones_sf": detalles_sin_factura_de_la_carga(carga),
             "km_escrito": escrito.get("km_final"),
         },
     )

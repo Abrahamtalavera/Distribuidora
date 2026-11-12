@@ -315,6 +315,8 @@
                   <th style="font-size:8.5px; color:#888; text-align:left; padding:2px 4px;">Producto recolectado</th>
                   <th class="num" style="font-size:8.5px; color:#888; text-align:right; padding:2px 4px;">Cantidad</th>
                   <th style="font-size:8.5px; color:#888; text-align:left; padding:2px 4px;">Motivo del producto</th>
+                  <th style="font-size:8.5px; color:#888; text-align:left; padding:2px 4px;">Lote</th>
+                  <th style="font-size:8.5px; color:#888; text-align:left; padding:2px 4px;">Vence</th>
                 </tr>
               </thead>
               <tbody>
@@ -323,6 +325,8 @@
                   <td style="padding:2px 4px;">{{ det.producto.nombre }}</td>
                   <td class="num" style="padding:2px 4px;">{{ det.cantidad_recolectada }}</td>
                   <td style="padding:2px 4px;">{{ det.motivo|default:"—" }}</td>
+                  <td style="padding:2px 4px;">{{ det.lote|default:"—" }}</td>
+                  <td style="padding:2px 4px;">{% include "core/_vence.html" with d=det %}</td>
                 </tr>
                 {% endfor %}
               </tbody>

@@ -82,17 +82,33 @@
             <input type="number" class="devuelta" value="0" readonly tabindex="-1">
           </div>
         </div>
-        <div class="motivo-linea oculto">
-          <select name="motivo_{{ linea.id }}">
-            <option value="">Motivo de la devolución...</option>
-            {% for m in motivos %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}
-          </select>
+        {# Cambio #28: lo devuelto se reparte por motivo, con lote y vencimiento. #}
+        <div class="motivo-linea detalle-dev oculto" data-linea="{{ linea.id }}">
+          <div class="dev-titulo"><span>Detalle de lo devuelto</span><span class="dev-cuadre"></span></div>
+          <div class="dev-partes"></div>
+          <button type="button" class="btn-otro-motivo">+ Otro motivo para este producto</button>
         </div>
       </div>
       {% empty %}
       <p>Esta factura no tiene productos pendientes de entregar.</p>
       {% endfor %}
     </div>
+    <template id="tplParteDev">
+      <div class="dev-parte">
+        <div class="dev-fila1">
+          <label class="dev-cant-campo">Cant.<input type="number" class="dev-cant" min="0" step="0.001" inputmode="decimal"></label>
+          <label class="dev-motivo-campo">Motivo<select class="dev-motivo">
+            <option value="">Motivo de la devolución...</option>
+            {% for m in motivos %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}
+          </select></label>
+          <button type="button" class="btn-quitar dev-quitar" title="Quitar este motivo">&times;</button>
+        </div>
+        <div class="dev-fila2">
+          <label>Lote<input type="text" class="dev-lote" maxlength="40" placeholder="Opcional" autocomplete="off"></label>
+          <label>Vencimiento<input type="date" class="dev-vence"></label>
+        </div>
+      </div>
+    </template>
   </div>
 
   <div class="seccion">
@@ -175,6 +191,19 @@
   .gps-estado.ok { color:var(--ok); }
   .gps-estado.mal { color:#8a5200; }
   .btn-guardar:disabled { background:#9fb3bd; }
+  /* Cambio #28: detalle de lo devuelto (motivo, lote y vencimiento) */
+  .detalle-dev { margin-top:10px; background:#fffaf0; border:1px dashed #d9a441; border-radius:8px; padding:10px; }
+  .dev-titulo { display:flex; justify-content:space-between; gap:8px; font-size:12px; font-weight:700; color:#8a5200; margin-bottom:8px; }
+  .dev-cuadre.mal { color:var(--danger); }
+  .dev-parte { background:#fff; border:1px solid #ecd9ad; border-radius:8px; padding:8px; margin-bottom:8px; }
+  .dev-parte label { display:flex; flex-direction:column; gap:3px; font-size:12px; color:var(--muted); min-width:0; }
+  .dev-parte input, .dev-parte select { width:100%; box-sizing:border-box; min-height:40px; font-size:15px; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-family:inherit; background:#fff; }
+  .dev-fila1 { display:grid; grid-template-columns:72px minmax(0,1fr) 34px; gap:8px; align-items:end; }
+  .dev-fila2 { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px; margin-top:8px; }
+  .dev-parte .dev-quitar { min-height:40px; }
+  .dev-parte.una .dev-cant-campo, .dev-parte.una .dev-quitar { display:none; }
+  .dev-parte.una .dev-fila1 { grid-template-columns:minmax(0,1fr); }
+  .btn-otro-motivo { width:100%; min-height:44px; border:1px dashed var(--primary); background:#fff; color:var(--primary-dark); border-radius:8px; font-size:14px; font-weight:600; font-family:inherit; cursor:pointer; }
 </style>
 <script>
 (function () {
@@ -295,6 +324,60 @@
 (function () {
   "use strict";
 
+  // ---- Cambio #28: lo devuelto se reparte por motivo (con lote y vencimiento) ----
+  var tplParte = document.getElementById("tplParteDev");
+  function r3(n) { return Math.round(n * 1000) / 1000; }
+
+  function devueltaDe(bloque) {
+    var v = parseFloat(bloque.querySelector(".devuelta").value);
+    return isNaN(v) ? 0 : v;
+  }
+
+  function refrescarPartes(bloque) {
+    var detalle = bloque.querySelector(".detalle-dev");
+    var id = detalle.dataset.linea;
+    var devuelta = devueltaDe(bloque);
+    var activa = devuelta > 0;
+    var partes = detalle.querySelectorAll(".dev-parte");
+    var suma = 0;
+    partes.forEach(function (p) {
+      p.classList.toggle("una", partes.length === 1);
+      var cant = p.querySelector(".dev-cant");
+      if (partes.length === 1) cant.value = devuelta;
+      cant.name = "dev_cant_" + id;
+      p.querySelector(".dev-motivo").name = "dev_motivo_" + id;
+      p.querySelector(".dev-lote").name = "dev_lote_" + id;
+      p.querySelector(".dev-vence").name = "dev_vence_" + id;
+      p.querySelectorAll("input,select").forEach(function (c) { c.disabled = !activa; });
+      suma += parseFloat(cant.value) || 0;
+    });
+    var cuadre = detalle.querySelector(".dev-cuadre");
+    var ok = partes.length <= 1 || r3(suma) === r3(devuelta);
+    cuadre.textContent = partes.length > 1 ? r3(suma) + " de " + r3(devuelta) + " repartidas" : "";
+    cuadre.classList.toggle("mal", !ok);
+    return ok;
+  }
+
+  function agregarParte(bloque) {
+    var detalle = bloque.querySelector(".detalle-dev");
+    var cont = detalle.querySelector(".dev-partes");
+    var parte = tplParte.content.firstElementChild.cloneNode(true);
+    var previas = cont.querySelectorAll(".dev-parte");
+    if (previas.length === 1) {
+      // Al dividir, la primera parte conserva lo devuelto y la nueva empieza vacía.
+      previas[0].querySelector(".dev-cant").value = devueltaDe(bloque);
+    }
+    cont.appendChild(parte);
+    if (previas.length >= 1) parte.querySelector(".dev-cant").value = "";
+    parte.querySelector(".dev-cant").addEventListener("input", function () { refrescarPartes(bloque); });
+    parte.querySelector(".dev-quitar").addEventListener("click", function () {
+      parte.remove();
+      refrescarPartes(bloque);
+    });
+    refrescarPartes(bloque);
+    return parte;
+  }
+
   function actualizarLinea(bloque) {
     var pendiente = parseFloat(bloque.dataset.pendiente || "0");
     var inputEnt = bloque.querySelector(".input-entregada");
@@ -305,10 +388,38 @@
     if (entregada < 0) entregada = 0;
     if (entregada > pendiente) entregada = pendiente;
     var devuelta = Math.max(0, pendiente - entregada);
-    inputDev.value = devuelta;
+    inputDev.value = r3(devuelta);
     inputDev.classList.toggle("hay-devolucion", devuelta > 0);
     motivoBloque.classList.toggle("oculto", devuelta <= 0);
+    if (devuelta > 0 && !motivoBloque.querySelector(".dev-parte")) agregarParte(bloque);
+    refrescarPartes(bloque);
   }
+
+  document.querySelectorAll(".linea-producto").forEach(function (bloque) {
+    var btn = bloque.querySelector(".btn-otro-motivo");
+    if (btn) btn.addEventListener("click", function () { agregarParte(bloque).querySelector(".dev-cant").focus(); });
+  });
+
+  // Antes de guardar: con varios motivos, las cantidades deben sumar lo devuelto.
+  window.addEventListener("submit", function (e) {
+    if (e.target.id !== "form-captura") return;
+    var malo = null;
+    document.querySelectorAll(".linea-producto").forEach(function (bloque) {
+      if (devueltaDe(bloque) > 0 && !refrescarPartes(bloque) && !malo) malo = bloque;
+    });
+    if (malo) {
+      e.preventDefault();
+      e.stopPropagation();
+      malo.scrollIntoView({ behavior: "smooth", block: "center" });
+      var aviso = malo.querySelector(".dev-aviso");
+      if (!aviso) {
+        aviso = document.createElement("div");
+        aviso.className = "aviso error dev-aviso";
+        aviso.textContent = "Las cantidades por motivo deben sumar lo devuelto.";
+        malo.querySelector(".detalle-dev").insertBefore(aviso, malo.querySelector(".dev-partes"));
+      }
+    }
+  }, true);
 
   var bloques = document.querySelectorAll(".linea-producto");
   bloques.forEach(function (bloque) {

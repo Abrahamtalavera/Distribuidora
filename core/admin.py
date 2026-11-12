@@ -590,6 +590,8 @@ class DevolucionSinFacturaDetalleInline(admin.TabularInline):
         "producto",
         "cantidad_recolectada",
         "motivo",
+        "lote",
+        "fecha_vencimiento",
         "recibido_inventario",
         "recibido_merma",
     )
@@ -629,6 +631,8 @@ class DevolucionSinFacturaAdmin(admin.ModelAdmin):
         "recibido_en",
         "recibido_por",
         "observaciones_bodega",
+        "revisada_cartera_en",
+        "revisada_cartera_por",
     )
     inlines = [DevolucionSinFacturaDetalleInline]
     actions = ["agrupar_en_carga_devolucion", "agregar_a_carga_existente_devolucion"]
@@ -759,6 +763,8 @@ class EntregaDetalleInline(admin.TabularInline):
         "cantidad_entregada",
         "cantidad_devuelta",
         "motivo_devolucion",
+        "lote",
+        "fecha_vencimiento",
         "recibido_inventario",
         "recibido_merma",
     )
@@ -791,7 +797,10 @@ class EntregaAdmin(admin.ModelAdmin):
     )
     search_fields = ("factura__numero_factura", "documento_devolucion")
     inlines = [EntregaDetalleInline]
-    readonly_fields = ("fecha_entrega", "gps_estado", "gps_latitud", "gps_longitud", "gps_precision", "mapa")
+    readonly_fields = (
+        "fecha_entrega", "gps_estado", "gps_latitud", "gps_longitud", "gps_precision", "mapa",
+        "revisada_cartera_en", "revisada_cartera_por",
+    )
     actions = ["usar_ubicacion_para_cliente"]
 
     @admin.display(description="Mapa")

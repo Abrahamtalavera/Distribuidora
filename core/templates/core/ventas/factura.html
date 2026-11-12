@@ -60,6 +60,7 @@
         {% if e.documento_cliente %}<div class="kv"><span class="l">Factura dejada al cliente</span><span class="v">{{ e.get_documento_cliente_display }}</span></div>{% endif %}
         {% if e.documento_devolucion %}<div class="kv"><span class="l">Doc. de devolución</span><span class="v">{{ e.documento_devolucion }}</span></div>{% endif %}
         {% if e.motivo_devolucion_general %}<div class="kv"><span class="l">Motivo de la visita</span><span class="v">{{ e.motivo_devolucion_general.nombre }}</span></div>{% endif %}
+        {% if e.tiene_devolucion %}<div class="kv"><span class="l">Cartera</span><span class="v">{% include "core/_cartera_estado.html" with obj=e %}</span></div>{% endif %}
         {% if e.observaciones %}<div class="detalle" style="margin-top:4px;">“{{ e.observaciones }}”</div>{% endif %}
       </div>
     {% empty %}
@@ -96,7 +97,7 @@
         <td class="r">{{ l.entregado|cantidad }}</td>
         <td class="r {% if l.devuelto %}dev{% endif %}">{{ l.devuelto|cantidad }}</td>
         <td class="r">{{ l.pendiente|cantidad }}</td>
-        <td>{{ l.motivo }}</td>
+        <td>{{ l.motivo }}{% if l.lotes %}<div class="detalle">Lote: {{ l.lotes }}</div>{% endif %}</td>
         <td class="detalle" {% if l.por_recibir %}style="color:#8a5200;"{% endif %}>{{ l.bodega }}</td>
       </tr>
       {% endfor %}

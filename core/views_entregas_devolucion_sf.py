@@ -56,10 +56,17 @@ def entregas_devolucion_sf_view(request, carga_id, devolucion_id):
         productos_ids = request.POST.getlist("producto_id")
         cantidades_crudas = request.POST.getlist("cantidad")
         motivos_crudos = request.POST.getlist("motivo_id")
-        cantidades = {}
-        motivos_por_producto = {}
-        for pid, crudo, motivo_crudo in zip(productos_ids, cantidades_crudas, motivos_crudos):
-            if not pid:
+        # Cambio #28: lote y vencimiento por línea; el mismo producto puede
+        # venir en varias líneas (otro motivo u otro lote).
+        lotes = request.POST.getlist("lote")
+        vencimientos = request.POST.getlist("fecha_vencimiento")
+        lotes += [""] * (len(productos_ids) - len(lotes))
+        vencimientos += [""] * (len(productos_ids) - len(vencimientos))
+        lineas_capturadas = []
+        for pid, crudo, motivo_crudo, lote, vence in zip(
+            productos_ids, cantidades_crudas, motivos_crudos, lotes, vencimientos
+        ):
+            if not (pid or "").strip().isdigit():
                 continue
             crudo = (crudo or "").strip()
             try:
@@ -67,17 +74,21 @@ def entregas_devolucion_sf_view(request, carga_id, devolucion_id):
             except InvalidOperation:
                 cantidad = Decimal("0")
             if cantidad > 0:
-                pid = int(pid)
-                cantidades[pid] = cantidades.get(pid, Decimal("0")) + cantidad
                 motivo_crudo = (motivo_crudo or "").strip()
-                if motivo_crudo.isdigit():
-                    motivos_por_producto[pid] = int(motivo_crudo)
+                lineas_capturadas.append(
+                    {
+                        "producto_id": int(pid),
+                        "cantidad": cantidad,
+                        "motivo_id": int(motivo_crudo) if motivo_crudo.isdigit() else None,
+                        "lote": lote,
+                        "fecha_vencimiento": vence,
+                    }
+                )
 
         try:
             registrar_captura(
                 devolucion,
-                cantidades=cantidades,
-                motivos=motivos_por_producto,
+                lineas_capturadas=lineas_capturadas,
                 observaciones=request.POST.get("observaciones", "").strip(),
             )
         except SolicitudError as exc:
@@ -100,9 +111,18 @@ def entregas_devolucion_sf_view(request, carga_id, devolucion_id):
                     },
                     "cantidad": _cantidad_plana(linea.cantidad_recolectada),
                     "motivo_id": linea.motivo_id,
+                    "lote": linea.lote,
+                    "fecha_vencimiento": (
+                        linea.fecha_vencimiento.isoformat() if linea.fecha_vencimiento else ""
+                    ),
                 }
-                for linea in devolucion.detalles.select_related("producto")
+                for linea in devolucion.detalles.select_related("producto").order_by("id")
             ]
+        )
+        # Va dentro de un <script>: que un texto escrito (como el lote) no
+        # pueda cerrar la etiqueta.
+        lineas_previas_json = (
+            lineas_previas_json.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
         )
 
     return render(

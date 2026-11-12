@@ -1,0 +1,139 @@
+{% extends "core/bodega/base.html" %}
+{% load formato %}
+{% block titulo %}Cartera — devoluciones{% endblock %}
+{% block estilos %}
+<style>
+  .desk { max-width:1180px; }
+  .filtros { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; }
+  .chip { display:inline-flex; align-items:center; min-height:36px; padding:0 14px; border-radius:18px; border:1px solid var(--border); background:#fff; color:var(--text); font-size:13px; text-decoration:none; }
+  .chip.activo { background:var(--primary); border-color:var(--primary); color:#fff; font-weight:600; }
+  .fechas { margin-left:auto; display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:12px; color:var(--muted); }
+  .fechas input { padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px; }
+  .fechas button { min-height:34px; padding:0 12px; border:1px solid var(--primary); background:#fff; color:var(--primary); border-radius:6px; font-weight:600; cursor:pointer; font-family:inherit; }
+  .est { display:inline-block; font-size:11px; font-weight:700; padding:3px 9px; border-radius:10px; white-space:nowrap; }
+  .est-ESPERANDO_BODEGA { background:var(--pend-bg); color:var(--pend); }
+  .est-PENDIENTE { background:var(--warn-bg); color:#8a5200; }
+  .est-RECIBIDA { background:#e1f1eb; color:#0a5850; }
+  tr.sel td { background:var(--accent-light); }
+  .ficha { border:2px solid var(--primary); }
+  .ficha-head { display:flex; flex-wrap:wrap; gap:8px 16px; align-items:baseline; margin-bottom:10px; }
+  .ficha-head h2 { margin:0; font-size:17px; color:var(--primary-dark); }
+  .datos { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:6px 16px; font-size:13px; margin-bottom:12px; }
+  .datos span { color:var(--muted); display:block; font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
+  .btn-enterado { background:#0e6e62; color:#fff; border:none; min-height:44px; padding:0 22px; border-radius:8px; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; }
+</style>
+{% endblock %}
+{% block cuerpo %}
+<div class="desk">
+  <div class="desk-head">
+    <div><h1>Cartera — Revisión de devoluciones</h1><div class="sub">Da por enterado lo que bodega ya recibió</div></div>
+    <form class="usuario" method="post" action="{% url 'cartera_salir' %}">
+      {% csrf_token %}
+      <span>Usuario: {{ request.user.get_username }}</span>
+      <button type="submit">Salir</button>
+    </form>
+  </div>
+  <div class="desk-body">
+    {% for message in messages %}
+      <div class="aviso {% if message.tags == 'error' %}error{% else %}ok{% endif %}">{{ message }}</div>
+    {% endfor %}
+
+    {% if seleccion %}
+    <div class="seccion ficha" id="ficha">
+      <div class="ficha-head">
+        <h2>{% if seleccion.tipo == "e" %}Factura {{ seleccion.folio }}{% else %}{{ seleccion.folio }}{% endif %}</h2>
+        <span class="est est-{{ seleccion.estado }}">{% if seleccion.estado == "RECIBIDA" %}✓ {% endif %}{{ seleccion.estado_nombre }}</span>
+        <span class="detalle">{{ seleccion.tipo_nombre }}</span>
+        <a class="detalle" style="margin-left:auto" href="?{{ consulta }}">Cerrar</a>
+      </div>
+      <div class="datos">
+        <div><span>Cliente / sucursal</span>{{ seleccion.cliente }}{% if seleccion.sucursal %} — {{ seleccion.sucursal }}{% endif %}</div>
+        <div><span>Fecha</span>{{ seleccion.fecha|date:"d/m/Y" }}</div>
+        <div><span>Carga</span>{{ seleccion.carga.codigo_reporte|default:"—" }}</div>
+        {% if seleccion.documento %}<div><span>Doc. devolución</span>{{ seleccion.documento }}</div>{% endif %}
+        {% if seleccion.motivo_general %}<div><span>Motivo general</span>{{ seleccion.motivo_general }}</div>{% endif %}
+        {% if seleccion.valor is not None %}<div><span>Valor devuelto</span>C$ {{ seleccion.valor|moneda }}</div>{% endif %}
+        <div><span>Recibida en bodega</span>{{ seleccion.recibido_bodega_en|date:"d/m/Y H:i"|default:"Todavía no" }}</div>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Producto</th><th>Motivo</th><th>Lote</th><th>Vence</th><th class="r">Devuelto</th><th class="r">A inventario</th><th class="r">Merma</th></tr></thead>
+          <tbody>
+            {% for l in seleccion.lineas %}
+            <tr>
+              <td><b>{{ l.codigo }}</b> {{ l.nombre }}</td>
+              <td>{{ l.motivo|default:"—" }}</td>
+              <td>{{ l.lote|default:"—" }}</td>
+              <td>{% if l.fecha_vencimiento %}{{ l.fecha_vencimiento|date:"d/m/Y" }}{% if l.esta_vencido %} <span style="font-size:10.5px;font-weight:700;color:#a94442;background:#fbe0de;padding:1px 6px;border-radius:8px;">Vencido</span>{% endif %}{% else %}—{% endif %}</td>
+              <td class="r">{{ l.cantidad|cantidad }}</td>
+              <td class="r">{% if l.recepcion_registrada %}{{ l.inventario|cantidad }}{% else %}—{% endif %}</td>
+              <td class="r">{% if l.recepcion_registrada %}{{ l.merma|cantidad }}{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if seleccion.observaciones_bodega %}<div class="detalle" style="margin-top:8px">Observaciones de bodega: {{ seleccion.observaciones_bodega }}</div>{% endif %}
+
+      {% if seleccion.estado == "RECIBIDA" %}
+        <div class="aviso ok" style="margin:12px 0 0">Recibido por cartera{% if seleccion.revisada_por %} por <b>{{ seleccion.revisada_por.get_username }}</b>{% endif %} el {{ seleccion.revisada_en|date:"d/m/Y H:i" }}.{% if seleccion.comentario %} Comentario: {{ seleccion.comentario }}{% endif %}</div>
+      {% elif puede_enterar %}
+        <form method="post" action="{% url 'cartera_enterado' seleccion.tipo seleccion.id %}" style="margin-top:12px">
+          {% csrf_token %}
+          <input type="hidden" name="volver" value="{{ consulta }}">
+          <div class="campo">
+            <label for="comentario">Comentario de cartera (opcional)</label>
+            <textarea name="comentario" id="comentario" rows="2"></textarea>
+          </div>
+          <div class="acciones" style="margin-top:0">
+            <button class="btn-enterado" type="submit">Dar por enterado</button>
+          </div>
+        </form>
+      {% else %}
+        <div class="aviso warn" style="margin:12px 0 0">Bodega todavía no ha recibido esta devolución. Podrás darla por enterada cuando bodega confirme la recepción.</div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="seccion">
+      <div class="filtros">
+        <a class="chip{% if filtro == 'pendientes' %} activo{% endif %}" href="?ver=pendientes&desde={{ desde|date:'Y-m-d' }}&hasta={{ hasta|date:'Y-m-d' }}">Pendientes de revisar · {{ total_pendientes }}</a>
+        <a class="chip{% if filtro == 'recibidas' %} activo{% endif %}" href="?ver=recibidas&desde={{ desde|date:'Y-m-d' }}&hasta={{ hasta|date:'Y-m-d' }}">Recibidas por cartera</a>
+        <a class="chip{% if filtro == 'todas' %} activo{% endif %}" href="?ver=todas&desde={{ desde|date:'Y-m-d' }}&hasta={{ hasta|date:'Y-m-d' }}">Todas</a>
+        {% if filtro != "pendientes" %}
+        <form class="fechas" method="get">
+          <input type="hidden" name="ver" value="{{ filtro }}">
+          <label>Del <input type="date" name="desde" value="{{ desde|date:'Y-m-d' }}"></label>
+          <label>al <input type="date" name="hasta" value="{{ hasta|date:'Y-m-d' }}"></label>
+          <button type="submit">Ver</button>
+        </form>
+        {% endif %}
+      </div>
+      {% if recortado %}<div class="aviso warn">Hay muchas devoluciones en este período: se muestran las más recientes. Acorta las fechas.</div>{% endif %}
+      {% if items %}
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Devolución</th><th>Tipo</th><th>Fecha</th><th>Cliente / sucursal</th><th>Carga</th><th class="r">Unid.</th><th>Cartera</th></tr></thead>
+          <tbody>
+            {% for i in items %}
+            <tr class="clic{% if seleccion and seleccion.clave == i.clave %} sel{% endif %}">
+              <td><a class="fila" href="?{{ consulta }}&sel={{ i.clave }}#ficha">{% if i.tipo == "e" %}Fact. {% endif %}{{ i.folio }}</a>{% if i.documento %}<div class="detalle">Doc. {{ i.documento }}</div>{% endif %}</td>
+              <td>{{ i.tipo_nombre }}</td>
+              <td>{{ i.fecha|date:"d/m/Y" }}</td>
+              <td>{{ i.cliente }}{% if i.sucursal %}<div class="detalle">{{ i.sucursal }}</div>{% endif %}</td>
+              <td>{{ i.carga.codigo_reporte|default:"—" }}</td>
+              <td class="r">{{ i.unidades|cantidad }}</td>
+              <td><span class="est est-{{ i.estado }}">{% if i.estado == "RECIBIDA" %}✓ {% endif %}{{ i.estado_nombre }}</span>{% if i.estado == "RECIBIDA" %}<div class="detalle">{{ i.revisada_por.get_username|default:"—" }} · {{ i.revisada_en|date:"d/m/Y H:i" }}</div>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <div class="detalle" style="padding:14px 4px; text-align:center">{% if filtro == "pendientes" %}No hay devoluciones pendientes de revisar.{% else %}No hay devoluciones en este período.{% endif %}</div>
+      {% endif %}
+      <div class="detalle" style="margin-top:10px">Toca una devolución para ver su detalle (productos, motivos, lote y vencimiento) y darla por enterada.</div>
+    </div>
+  </div>
+</div>
+{% endblock %}

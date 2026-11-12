@@ -24,6 +24,30 @@ class RegistroEntregaError(Exception):
     pass
 
 
+def limpiar_lote(texto):
+    """Cambio #28: lote tal como lo escriben, sin espacios de más (máx. 40)."""
+    return " ".join((texto or "").split())[:40]
+
+
+def leer_fecha_vencimiento(texto):
+    """
+    Cambio #28: fecha de vencimiento escrita en pantalla. Acepta la del
+    selector de fecha (AAAA-MM-DD) y también DD/MM/AAAA. Vacía o inválida → None
+    (el campo es opcional).
+    """
+    from datetime import datetime
+
+    texto = (texto or "").strip()
+    if not texto:
+        return None
+    for formato in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(texto, formato).date()
+        except ValueError:
+            continue
+    return None
+
+
 def _a_decimal(valor, por_defecto="0"):
     if valor is None or valor == "":
         return Decimal(por_defecto)
@@ -43,6 +67,7 @@ def registrar_entrega(
     cantidades_entregadas,
     motivo_general_id=None,
     motivo_por_linea=None,
+    devolucion_por_linea=None,
     observaciones="",
     pagos=None,
     documento_devolucion="",
@@ -59,6 +84,14 @@ def registrar_entrega(
       para superar lo que en realidad estaba pendiente.
     - motivo_por_linea: dict opcional {factura_detalle_id: motivo_devolucion_id}
       para las líneas donde queda una cantidad_devuelta > 0.
+    - devolucion_por_linea (Cambio #28): dict opcional
+      {factura_detalle_id: [{"cantidad", "motivo_id", "lote", "fecha_vencimiento"}, ...]}
+      con el detalle de lo devuelto de esa línea. Con una sola parte, su
+      cantidad se toma igual a lo devuelto. Con varias (el mismo producto
+      devuelto por motivos o lotes distintos), las cantidades deben sumar
+      exactamente lo devuelto, y cada parte se guarda en su propio
+      EntregaDetalle (las extras con cantidad_entregada = 0). Si una línea
+      no trae detalle, se usa motivo_por_linea como antes.
     - pagos: lista opcional (Cambio #13: hasta 3) de dicts
       {"monto", "forma_pago", "referencia"}. Aplica a facturas de contado y
       de crédito (en crédito es un abono). La CarteraCobro se crea "sobre la
@@ -80,6 +113,7 @@ def registrar_entrega(
     Devuelve la Entrega creada.
     """
     motivo_por_linea = motivo_por_linea or {}
+    devolucion_por_linea = devolucion_por_linea or {}
 
     lineas_por_id = {linea.id: linea for linea in factura.lineas.select_for_update()}
     if not lineas_por_id:
@@ -120,14 +154,26 @@ def registrar_entrega(
         motivo_id = motivo_por_linea.get(factura_detalle_id) or motivo_por_linea.get(
             str(factura_detalle_id)
         )
-
-        EntregaDetalle.objects.create(
-            entrega=entrega,
-            factura_detalle=linea,
-            cantidad_entregada=entregada,
-            cantidad_devuelta=devuelta,
-            motivo_devolucion_id=motivo_id if devuelta > 0 else None,
+        partes = _partes_devolucion(
+            linea,
+            devuelta,
+            devolucion_por_linea.get(factura_detalle_id)
+            or devolucion_por_linea.get(str(factura_detalle_id)),
+            motivo_id,
         )
+
+        for i, parte in enumerate(partes):
+            EntregaDetalle.objects.create(
+                entrega=entrega,
+                factura_detalle=linea,
+                # Lo entregado va en la primera parte; las demás solo
+                # llevan su porción devuelta.
+                cantidad_entregada=entregada if i == 0 else Decimal("0"),
+                cantidad_devuelta=parte["cantidad"],
+                motivo_devolucion_id=parte["motivo_id"],
+                lote=parte["lote"],
+                fecha_vencimiento=parte["fecha_vencimiento"],
+            )
 
         linea.cantidad_entregada = linea.cantidad_entregada + entregada
         linea.cantidad_devuelta = linea.cantidad_devuelta + devuelta
@@ -184,6 +230,50 @@ def registrar_entrega(
         recalcular_cartera(cartera)
 
     return entrega
+
+
+def _partes_devolucion(linea, devuelta, detalle, motivo_id):
+    """
+    Cambio #28: reparte lo devuelto de una línea en partes (motivo, lote,
+    vencimiento). Siempre devuelve al menos una parte; si no hay devolución,
+    es una sola parte en cero y sin datos.
+    """
+    vacia = {"cantidad": Decimal("0"), "motivo_id": None, "lote": "", "fecha_vencimiento": None}
+    if devuelta <= 0:
+        return [vacia]
+
+    partes = []
+    for crudo in detalle or []:
+        partes.append(
+            {
+                "cantidad": _a_decimal(crudo.get("cantidad")),
+                "motivo_id": crudo.get("motivo_id") or None,
+                "lote": limpiar_lote(crudo.get("lote")),
+                "fecha_vencimiento": (
+                    crudo.get("fecha_vencimiento")
+                    if not isinstance(crudo.get("fecha_vencimiento"), str)
+                    else leer_fecha_vencimiento(crudo.get("fecha_vencimiento"))
+                ),
+            }
+        )
+    if not partes:
+        return [dict(vacia, cantidad=devuelta, motivo_id=motivo_id or None)]
+    if len(partes) == 1:
+        partes[0]["cantidad"] = devuelta
+        return partes
+
+    if any(p["cantidad"] <= 0 for p in partes):
+        raise RegistroEntregaError(
+            f"{linea.producto.nombre}: cada motivo de devolución debe llevar una "
+            "cantidad mayor que cero."
+        )
+    suma = sum((p["cantidad"] for p in partes), Decimal("0"))
+    if suma != devuelta:
+        raise RegistroEntregaError(
+            f"{linea.producto.nombre}: las cantidades por motivo suman {suma.normalize():f} "
+            f"y lo devuelto es {devuelta.normalize():f}. Deben coincidir."
+        )
+    return partes
 
 
 def valor_unitario(linea):

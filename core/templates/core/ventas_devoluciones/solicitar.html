@@ -55,7 +55,7 @@
           <td>{{ d.sucursal }}</td>
           <td class="r">{{ d.total_unidades_estimado }}</td>
           <td>{{ d.motivo }}</td>
-          <td><span class="badge-estado badge-{{ d.estado }}">{{ d.get_estado_display }}</span></td>
+          <td><span class="badge-estado badge-{{ d.estado_css }}">{{ d.estado_mostrar }}</span></td>
           <td>{{ d.carga.codigo_reporte|default:"—" }}</td>
         </tr>
         {% empty %}

@@ -147,7 +147,7 @@
 
     <h2>Devoluciones{% if r.recepcion.confirmada %} recibidas en bodega{% endif %}</h2>
     <table>
-      <thead><tr><th>Producto</th><th>Factura</th><th>Doc. devolución</th><th>Motivo</th><th class="r">Reportado</th><th class="r">A inventario</th><th class="r">Merma</th><th class="r">Recibido</th><th class="r">Diferencia</th></tr></thead>
+      <thead><tr><th>Producto</th><th>Factura</th><th>Doc. devolución</th><th>Motivo</th><th>Lote</th><th>Vence</th><th class="r">Reportado</th><th class="r">A inventario</th><th class="r">Merma</th><th class="r">Recibido</th><th class="r">Diferencia</th><th>Cartera</th></tr></thead>
       <tbody>
         {% for d in r.devoluciones %}
         <tr>
@@ -155,18 +155,21 @@
           <td>{{ d.entrega.factura.numero_factura }}</td>
           <td>{{ d.entrega.documento_devolucion|default:"—" }}</td>
           <td>{{ d.motivo_nombre|default:"—" }}</td>
+          <td style="white-space:nowrap">{{ d.lote|default:"—" }}</td>
+          <td>{% include "core/_vence.html" with d=d %}</td>
           <td class="r">{{ d.cantidad_devuelta|cantidad }}</td>
           <td class="r">{{ d.recibido_inventario|cantidad|default:"—" }}</td>
           <td class="r">{{ d.recibido_merma|cantidad|default:"—" }}</td>
           <td class="r">{{ d.recibido_total|cantidad|default:"—" }}</td>
           <td class="r">{{ d.diferencia_recepcion|cantidad_signo|default:"—" }}</td>
+          <td>{% include "core/_cartera_estado.html" with obj=d.entrega %}</td>
         </tr>
         {% empty %}
-        <tr><td colspan="9">No hubo devoluciones en esta carga.</td></tr>
+        <tr><td colspan="12">No hubo devoluciones en esta carga.</td></tr>
         {% endfor %}
         {% if r.devoluciones %}
         <tr class="tot">
-          <td colspan="4">Total</td>
+          <td colspan="6">Total</td>
           <td class="r">{{ r.recepcion.totales.reportado|cantidad }}</td>
           {% if r.recepcion.confirmada %}
             <td class="r">{{ r.recepcion.totales.inventario|cantidad }}</td>
@@ -176,6 +179,7 @@
           {% else %}
             <td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td>
           {% endif %}
+          <td></td>
         </tr>
         {% endif %}
       </tbody>
@@ -192,7 +196,7 @@
     {% if detalles_devoluciones_sf %}
     <h2>Devoluciones sin factura</h2>
     <table>
-      <thead><tr><th>Producto</th><th>Devolución</th><th>Sucursal</th><th>Motivo</th><th class="r">Reportado</th><th class="r">A inventario</th><th class="r">Merma</th><th class="r">Recibido</th><th class="r">Diferencia</th></tr></thead>
+      <thead><tr><th>Producto</th><th>Devolución</th><th>Sucursal</th><th>Motivo</th><th>Lote</th><th>Vence</th><th class="r">Reportado</th><th class="r">A inventario</th><th class="r">Merma</th><th class="r">Recibido</th><th class="r">Diferencia</th><th>Cartera</th></tr></thead>
       <tbody>
         {% for d in detalles_devoluciones_sf %}
         <tr>
@@ -200,11 +204,14 @@
           <td>{{ d.devolucion.codigo_reporte }}</td>
           <td>{{ d.devolucion.sucursal.nombre }}</td>
           <td>{{ d.motivo|default:"—" }}</td>
+          <td style="white-space:nowrap">{{ d.lote|default:"—" }}</td>
+          <td>{% include "core/_vence.html" with d=d %}</td>
           <td class="r">{{ d.cantidad_recolectada|cantidad }}</td>
           <td class="r">{{ d.recibido_inventario|cantidad|default:"—" }}</td>
           <td class="r">{{ d.recibido_merma|cantidad|default:"—" }}</td>
           <td class="r">{{ d.recibido_total|cantidad|default:"—" }}</td>
           <td class="r">{{ d.diferencia_recepcion|cantidad_signo|default:"—" }}</td>
+          <td>{% include "core/_cartera_estado.html" with obj=d.devolucion %}</td>
         </tr>
         {% endfor %}
       </tbody>

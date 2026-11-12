@@ -34,6 +34,7 @@ from core.devoluciones_sf import (
     registrar_recepcion_sin_factura,
     resumen_recepcion_sin_factura,
 )
+from core.entregas import leer_fecha_vencimiento, limpiar_lote
 from core.models import Carga
 
 
@@ -45,6 +46,32 @@ def _decimal_o_none(texto):
         return Decimal(texto)
     except InvalidOperation:
         return None
+
+
+def _lotes_escritos(post, devoluciones, sufijo=""):
+    """
+    Cambio #28: lote y vencimiento que bodega escribió en cada línea. Solo
+    se toman las líneas que traen las casillas (si no vienen, no se tocan).
+    Devuelve (para guardar, tal como se escribió).
+    """
+    para_guardar, escrito = {}, {}
+    for d in devoluciones:
+        clave_lote, clave_vence = f"lote{sufijo}_{d.id}", f"vence{sufijo}_{d.id}"
+        if clave_lote not in post and clave_vence not in post:
+            continue
+        lote, vence = post.get(clave_lote, ""), post.get(clave_vence, "").strip()
+        escrito[d.id] = (lote, vence)
+        para_guardar[d.id] = (limpiar_lote(lote), leer_fecha_vencimiento(vence))
+    return para_guardar, escrito
+
+
+def _poner_lote_en_pantalla(devoluciones, escrito):
+    for d in devoluciones:
+        if escrito is not None and d.id in escrito.get("lotes", {}):
+            d.valor_lote, d.valor_vence = escrito["lotes"][d.id]
+        else:
+            d.valor_lote = d.lote
+            d.valor_vence = d.fecha_vencimiento.isoformat() if d.fecha_vencimiento else ""
 
 
 def bodega_required(vista):
@@ -121,6 +148,7 @@ def bodega_recepcion_view(request, carga_id):
             },
             "observaciones": request.POST.get("observaciones_bodega_sf", ""),
         }
+        lotes_sf, escrito_sf["lotes"] = _lotes_escritos(request.POST, detalles_sf, "sf")
         try:
             registrar_recepcion_sin_factura(
                 carga,
@@ -130,6 +158,7 @@ def bodega_recepcion_view(request, carga_id):
                     for i, (inv, mer) in escrito_sf["cantidades"].items()
                 },
                 observaciones=escrito_sf["observaciones"],
+                lotes=lotes_sf,
             )
         except RecepcionSinFacturaError as exc:
             messages.error(request, str(exc))
@@ -150,6 +179,7 @@ def bodega_recepcion_view(request, carga_id):
             },
             "observaciones": request.POST.get("observaciones_bodega", ""),
         }
+        lotes_cf, escrito["lotes"] = _lotes_escritos(request.POST, devoluciones)
         try:
             registrar_recepcion(
                 carga,
@@ -159,6 +189,7 @@ def bodega_recepcion_view(request, carga_id):
                     for i, (inv, mer) in escrito["cantidades"].items()
                 },
                 observaciones=escrito["observaciones"],
+                lotes=lotes_cf,
             )
         except RecepcionError as exc:
             messages.error(request, str(exc))
@@ -180,8 +211,11 @@ def bodega_recepcion_view(request, carga_id):
             d.valor_inv = "" if d.recibido_inventario is None else _plano(d.recibido_inventario)
             d.valor_mer = "" if d.recibido_merma is None else _plano(d.recibido_merma)
 
+    _poner_lote_en_pantalla(devoluciones, escrito)
+
     detalles_sf = detalles_sin_factura_de_la_carga(carga)
     recepcion_sf = resumen_recepcion_sin_factura(carga, detalles_sf)
+    _poner_lote_en_pantalla(detalles_sf, escrito_sf)
     editando_sf = recepcion_sf["editable"] and (
         not recepcion_sf["confirmada"] or corrigiendo_sf or escrito_sf is not None
     )

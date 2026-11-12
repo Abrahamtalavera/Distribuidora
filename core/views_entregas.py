@@ -234,6 +234,7 @@ def entregas_captura_view(request, carga_id, factura_id):
         lineas_pendientes = list(factura.lineas.all())
         cantidades = {}
         motivo_por_linea = {}
+        devolucion_por_linea = {}
         for linea in lineas_pendientes:
             if linea.pendiente_entrega <= 0:
                 continue
@@ -245,6 +246,29 @@ def entregas_captura_view(request, carga_id, factura_id):
             motivo_id = request.POST.get(f"motivo_{linea.id}")
             if motivo_id:
                 motivo_por_linea[linea.id] = motivo_id
+            # Cambio #28: lo devuelto, repartido por motivo, con lote y
+            # vencimiento (opcionales).
+            partes = []
+            for cant, mot, lote, vence in zip(
+                request.POST.getlist(f"dev_cant_{linea.id}"),
+                request.POST.getlist(f"dev_motivo_{linea.id}"),
+                request.POST.getlist(f"dev_lote_{linea.id}"),
+                request.POST.getlist(f"dev_vence_{linea.id}"),
+            ):
+                try:
+                    cantidad_parte = Decimal(cant.strip()) if cant.strip() else Decimal("0")
+                except InvalidOperation:
+                    cantidad_parte = Decimal("0")
+                partes.append(
+                    {
+                        "cantidad": cantidad_parte,
+                        "motivo_id": mot if mot.strip().isdigit() else None,
+                        "lote": lote,
+                        "fecha_vencimiento": vence,
+                    }
+                )
+            if partes:
+                devolucion_por_linea[linea.id] = partes
 
         motivo_general_id = request.POST.get("motivo_general") or None
         observaciones = request.POST.get("observaciones", "").strip()
@@ -282,6 +306,7 @@ def entregas_captura_view(request, carga_id, factura_id):
                 cantidades_entregadas=cantidades,
                 motivo_general_id=motivo_general_id,
                 motivo_por_linea=motivo_por_linea,
+                devolucion_por_linea=devolucion_por_linea,
                 observaciones=observaciones,
                 pagos=pagos,
                 documento_devolucion=request.POST.get("documento_devolucion", "").strip(),

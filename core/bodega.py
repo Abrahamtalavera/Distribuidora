@@ -53,6 +53,7 @@ def devoluciones_de_la_carga(carga):
         EntregaDetalle.objects.filter(entrega__carga=carga, cantidad_devuelta__gt=0)
         .select_related(
             "entrega__factura",
+            "entrega__revisada_cartera_por",
             "entrega__motivo_devolucion_general__area_responsable",
             "factura_detalle__producto",
             "motivo_devolucion__area_responsable",
@@ -145,7 +146,7 @@ def cargas_para_bodega(dias_recibidas=7):
 
 
 @transaction.atomic
-def registrar_recepcion(carga, *, usuario, cantidades, observaciones=""):
+def registrar_recepcion(carga, *, usuario, cantidades, observaciones="", lotes=None):
     """
     Bodega confirma lo recibido.
 
@@ -193,10 +194,18 @@ def registrar_recepcion(carga, *, usuario, cantidades, observaciones=""):
             "en las observaciones para poder confirmar."
         )
 
+    # Cambio #28: bodega puede completar o corregir lote y vencimiento
+    # (opcionales). lotes: {id de la línea: (lote, fecha_vencimiento)}; una
+    # línea que no viene en el dict conserva lo que tenía.
+    lotes = lotes or {}
     for d, inventario, merma in nuevos:
         d.recibido_inventario = inventario
         d.recibido_merma = merma
-        d.save(update_fields=["recibido_inventario", "recibido_merma"])
+        campos = ["recibido_inventario", "recibido_merma"]
+        if d.id in lotes:
+            d.lote, d.fecha_vencimiento = lotes[d.id]
+            campos += ["lote", "fecha_vencimiento"]
+        d.save(update_fields=campos)
 
     carga.devoluciones_recibidas_en = timezone.now()
     carga.devoluciones_recibidas_por = usuario

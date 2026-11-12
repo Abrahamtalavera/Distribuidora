@@ -1460,3 +1460,279 @@ class PantallasVentasDevolucionesTests(DevolucionSinFacturaBase):
         r = self.client.get(reverse("devoluciones_sf_solicitar"))
         self.assertEqual(r.status_code, 403)
         self.assertContains(r, "no tiene permiso", status_code=403)
+
+
+class Cambio28Base(DevolucionSinFacturaBase):
+    """Cambio #28: lote, vencimiento, varias líneas por producto y cartera."""
+
+    def setUp(self):
+        super().setUp()
+        self.otro_motivo = (
+            MotivoDevolucion.objects.filter(activo=True).exclude(pk=self.motivo.pk).first()
+            or MotivoDevolucion.objects.create(nombre="Empaque dañado (prueba)")
+        )
+        self.cartera_user = User.objects.create_user("cartera1", password="x")
+        grupo_cartera, _ = Group.objects.get_or_create(name="Cartera")
+        self.cartera_user.groups.add(grupo_cartera)
+        self.vence = self.hoy + timedelta(days=40)
+
+    def entrega_con_devolucion(self, partes=None, entregada="4"):
+        """Factura de 10 unidades; se entregan 4 y se devuelven 6."""
+        from core.entregas import registrar_entrega
+
+        self.carga = Carga.objects.create(
+            estado="EN_RUTA", ruta=self.ruta, conductor=self.repartidor,
+            salio_a_ruta_en=timezone.now(),
+        )
+        factura = self.factura("F-28", carga=self.carga, cargada_en=timezone.now())
+        linea = factura.lineas.first()
+        entrega = registrar_entrega(
+            factura=factura,
+            cantidades_entregadas={linea.id: Decimal(entregada)},
+            devolucion_por_linea={linea.id: partes} if partes is not None else None,
+            carga=self.carga,
+        )
+        return factura, linea, entrega
+
+
+class EntregaVariosMotivosTests(Cambio28Base):
+    def test_mismo_producto_con_dos_motivos_lote_y_vencimiento(self):
+        factura, linea, entrega = self.entrega_con_devolucion(
+            [
+                {"cantidad": "4", "motivo_id": self.motivo.id, "lote": " L-1 ", "fecha_vencimiento": "2026-10-30"},
+                {"cantidad": "2", "motivo_id": self.otro_motivo.id, "lote": "L-2", "fecha_vencimiento": self.vence.isoformat()},
+            ]
+        )
+        detalles = list(entrega.lineas.order_by("id"))
+        self.assertEqual(len(detalles), 2)
+        self.assertEqual(detalles[0].cantidad_entregada, Decimal("4"))
+        self.assertEqual(detalles[0].cantidad_devuelta, Decimal("4"))
+        self.assertEqual(detalles[0].lote, "L-1")
+        self.assertEqual(str(detalles[0].fecha_vencimiento), "2026-10-30")
+        self.assertEqual(detalles[1].cantidad_entregada, Decimal("0"))
+        self.assertEqual(detalles[1].cantidad_devuelta, Decimal("2"))
+        self.assertEqual(detalles[1].motivo_devolucion, self.otro_motivo)
+        linea.refresh_from_db()
+        self.assertEqual(linea.cantidad_entregada, Decimal("4"))
+        self.assertEqual(linea.cantidad_devuelta, Decimal("6"))
+        self.assertEqual(linea.pendiente_entrega, Decimal("0"))
+
+    def test_una_sola_parte_toma_todo_lo_devuelto_y_lote_opcional(self):
+        _, _, entrega = self.entrega_con_devolucion(
+            [{"cantidad": "", "motivo_id": self.motivo.id, "lote": "", "fecha_vencimiento": ""}]
+        )
+        detalle = entrega.lineas.get()
+        self.assertEqual(detalle.cantidad_devuelta, Decimal("6"))
+        self.assertEqual(detalle.lote, "")
+        self.assertIsNone(detalle.fecha_vencimiento)
+
+    def test_partes_que_no_suman_lo_devuelto_no_guardan_nada(self):
+        from core.entregas import RegistroEntregaError
+
+        with self.assertRaises(RegistroEntregaError):
+            self.entrega_con_devolucion(
+                [
+                    {"cantidad": "4", "motivo_id": self.motivo.id},
+                    {"cantidad": "1", "motivo_id": self.otro_motivo.id},
+                ]
+            )
+        self.assertEqual(Entrega.objects.count(), 0)
+        self.assertEqual(FacturaDetalle.objects.get().cantidad_devuelta, Decimal("0"))
+
+    def test_sin_detalle_funciona_como_antes(self):
+        _, _, entrega = self.entrega_con_devolucion(None)
+        detalle = entrega.lineas.get()
+        self.assertEqual(detalle.cantidad_devuelta, Decimal("6"))
+
+    def test_pantalla_de_captura_envia_varios_motivos(self):
+        self.carga = Carga.objects.create(
+            estado="EN_RUTA", ruta=self.ruta, conductor=self.repartidor,
+            salio_a_ruta_en=timezone.now(),
+        )
+        factura = self.factura("F-28B", carga=self.carga, cargada_en=timezone.now(),
+                               modalidad_pago=self.credito)
+        linea = factura.lineas.first()
+        self.client.force_login(self.admin)  # oficina: no pide llegada ni GPS
+        url = reverse("entregas_captura", args=[self.carga.id, factura.id])
+        r = self.client.get(url)
+        self.assertContains(r, "Otro motivo para este producto")
+        r = self.client.post(url, {
+            f"ent_{linea.id}": "7",
+            f"dev_cant_{linea.id}": ["2", "1"],
+            f"dev_motivo_{linea.id}": [str(self.motivo.id), str(self.otro_motivo.id)],
+            f"dev_lote_{linea.id}": ["LA", "LB"],
+            f"dev_vence_{linea.id}": [self.vence.isoformat(), ""],
+            "documento_cliente": "ORIGINAL",
+        })
+        self.assertEqual(r.status_code, 302)
+        detalles = list(EntregaDetalle.objects.filter(factura_detalle=linea).order_by("id"))
+        self.assertEqual([d.cantidad_devuelta for d in detalles], [Decimal("2"), Decimal("1")])
+        self.assertEqual([d.lote for d in detalles], ["LA", "LB"])
+
+
+class RecoleccionVariasLineasTests(Cambio28Base):
+    def setUp(self):
+        super().setUp()
+        self.carga = Carga.objects.create(
+            estado="EN_RUTA", ruta=self.ruta, conductor=self.repartidor,
+            salio_a_ruta_en=timezone.now(),
+        )
+        self.devolucion = self.crear_devolucion(carga=self.carga, estado="ASIGNADA")
+
+    def test_mismo_producto_en_dos_lineas(self):
+        from core.devoluciones_sf import registrar_captura
+
+        registrar_captura(
+            self.devolucion,
+            lineas_capturadas=[
+                {"producto_id": self.producto.id, "cantidad": Decimal("10"), "motivo_id": self.motivo.id,
+                 "lote": "L-2509", "fecha_vencimiento": "30/10/2026"},
+                {"producto_id": self.producto.id, "cantidad": Decimal("3"), "motivo_id": self.otro_motivo.id,
+                 "lote": "", "fecha_vencimiento": ""},
+            ],
+        )
+        lineas = list(self.devolucion.detalles.order_by("id"))
+        self.assertEqual(len(lineas), 2)
+        self.assertEqual(lineas[0].lote, "L-2509")
+        self.assertEqual(str(lineas[0].fecha_vencimiento), "2026-10-30")
+        self.assertEqual(lineas[1].motivo, self.otro_motivo)
+        self.assertIsNone(lineas[1].fecha_vencimiento)
+
+    def test_pantalla_del_repartidor_no_junta_lineas_del_mismo_producto(self):
+        self.client.post(
+            reverse("entregas_acceso"),
+            {"codigo_carga": self.carga.codigo_acceso, "pin_repartidor": "4321"},
+        )
+        url = reverse("entregas_devolucion_sf", args=[self.carga.id, self.devolucion.id])
+        r = self.client.post(url, {
+            "producto_id": [str(self.producto.id), str(self.producto.id)],
+            "cantidad": ["10", "3"],
+            "motivo_id": [str(self.motivo.id), str(self.otro_motivo.id)],
+            "lote": ["L-1", "</script><b>"],
+            "fecha_vencimiento": [self.vence.isoformat(), ""],
+        })
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(self.devolucion.detalles.count(), 2)
+        # Al volver a abrir, el lote escrito no rompe el script de la página.
+        r = self.client.get(url)
+        self.assertContains(r, "Otra línea de este producto")
+        self.assertNotContains(r, "</script><b>")
+
+
+class BodegaLoteTests(Cambio28Base):
+    def test_bodega_completa_lote_y_vencimiento(self):
+        carga = Carga.objects.create(estado="RUTA_TERMINADA", ruta=self.ruta, conductor=self.repartidor)
+        devolucion = self.crear_devolucion(carga=carga, estado="RECOLECTADA", recolectada_en=timezone.now())
+        linea = DevolucionSinFacturaDetalle.objects.create(
+            devolucion=devolucion, producto=self.producto, cantidad_recolectada=Decimal("5"), motivo=self.motivo,
+        )
+        self.client.force_login(self.bodega_user)
+        url = reverse("bodega_recepcion", args=[carga.id])
+        self.assertContains(self.client.get(url), f'name="lotesf_{linea.id}"')
+        r = self.client.post(url, {
+            "seccion": "sf",
+            f"invsf_{linea.id}": "5", f"mersf_{linea.id}": "0",
+            f"lotesf_{linea.id}": "L-77", f"vencesf_{linea.id}": "2026-01-15",
+        })
+        self.assertEqual(r.status_code, 302)
+        linea.refresh_from_db()
+        self.assertEqual(linea.lote, "L-77")
+        self.assertEqual(str(linea.fecha_vencimiento), "2026-01-15")
+        r = self.client.get(url)
+        self.assertContains(r, "L-77")
+        self.assertContains(r, "Vencido")
+
+
+class CarteraTests(Cambio28Base):
+    def _devolucion_sf(self, estado="CERRADA"):
+        carga = Carga.objects.create(estado="RUTA_TERMINADA", ruta=self.ruta, conductor=self.repartidor)
+        devolucion = self.crear_devolucion(
+            carga=carga, estado=estado, recolectada_en=timezone.now(),
+            recibido_en=timezone.now() if estado == "CERRADA" else None,
+        )
+        DevolucionSinFacturaDetalle.objects.create(
+            devolucion=devolucion, producto=self.producto, cantidad_recolectada=Decimal("5"),
+            motivo=self.motivo, lote="L-9", fecha_vencimiento=self.vence,
+            recibido_inventario=Decimal("5") if estado == "CERRADA" else None,
+            recibido_merma=Decimal("0") if estado == "CERRADA" else None,
+        )
+        return devolucion
+
+    def test_no_se_puede_antes_de_bodega(self):
+        from core.cartera import CarteraError, dar_por_enterado
+
+        devolucion = self._devolucion_sf(estado="RECOLECTADA")
+        with self.assertRaises(CarteraError):
+            dar_por_enterado("sf", devolucion.id, usuario=self.cartera_user)
+
+    def test_sin_factura_recibida_por_cartera(self):
+        from core.cartera import CarteraError, dar_por_enterado, devoluciones_para_cartera
+
+        devolucion = self._devolucion_sf()
+        pendientes, _ = devoluciones_para_cartera("pendientes")
+        self.assertEqual([i["clave"] for i in pendientes], [f"sf-{devolucion.id}"])
+        dar_por_enterado("sf", devolucion.id, usuario=self.cartera_user, comentario="ok")
+        devolucion.refresh_from_db()
+        self.assertEqual(devolucion.revisada_cartera_por, self.cartera_user)
+        self.assertEqual(devolucion.estado_mostrar, "Recibido por cartera")
+        self.assertEqual(devoluciones_para_cartera("pendientes")[0], [])
+        with self.assertRaises(CarteraError):
+            dar_por_enterado("sf", devolucion.id, usuario=self.cartera_user)
+
+    def test_con_factura_despues_de_recepcion_en_bodega(self):
+        from core.bodega import registrar_recepcion
+        from core.cartera import CarteraError, dar_por_enterado
+
+        _, _, entrega = self.entrega_con_devolucion(
+            [{"cantidad": "4", "motivo_id": self.motivo.id}, {"cantidad": "2", "motivo_id": self.otro_motivo.id}]
+        )
+        with self.assertRaises(CarteraError):
+            dar_por_enterado("e", entrega.id, usuario=self.cartera_user)
+        self.carga.estado = "RUTA_TERMINADA"
+        self.carga.save()
+        registrar_recepcion(
+            self.carga, usuario=self.bodega_user,
+            cantidades={d.id: (d.cantidad_devuelta, Decimal("0")) for d in entrega.lineas.all()},
+        )
+        dar_por_enterado("e", entrega.id, usuario=self.cartera_user)
+        entrega.refresh_from_db()
+        self.assertIsNotNone(entrega.revisada_cartera_en)
+
+    def test_pantallas_de_cartera(self):
+        devolucion = self._devolucion_sf()
+        r = self.client.get(reverse("cartera_lista"))
+        self.assertEqual(r.status_code, 302)
+        self.client.force_login(self.bodega_user)
+        self.assertEqual(self.client.get(reverse("cartera_lista")).status_code, 403)
+        self.client.force_login(self.cartera_user)
+        r = self.client.get(reverse("cartera_lista") + f"?sel=sf-{devolucion.id}")
+        self.assertContains(r, devolucion.codigo_reporte)
+        self.assertContains(r, "Dar por enterado")
+        self.assertContains(r, "L-9")
+        r = self.client.post(
+            reverse("cartera_enterado", args=["sf", devolucion.id]),
+            {"comentario": "Revisado", "volver": "ver=pendientes"},
+        )
+        self.assertEqual(r.status_code, 302)
+        devolucion.refresh_from_db()
+        self.assertTrue(devolucion.recibida_por_cartera)
+        # Ventas ve el nuevo estatus en "Mis solicitudes".
+        self.client.force_login(self.ventas)
+        self.assertContains(self.client.get(reverse("devoluciones_sf_lista")), "Recibido por cartera")
+
+    def test_reportes_de_la_carga_muestran_lote_y_cartera(self):
+        from core.cartera import dar_por_enterado
+
+        devolucion = self._devolucion_sf()
+        dar_por_enterado("sf", devolucion.id, usuario=self.cartera_user)
+        carga = devolucion.carga
+        carga.estado = "CERRADA"
+        carga.save()
+        self.client.force_login(self.admin)
+        r = self.client.get(reverse("admin:core_carga_imprimir", args=[carga.id]))
+        self.assertContains(r, "L-9")
+        self.assertContains(r, self.vence.strftime("%d/%m/%Y"))
+        self.assertContains(r, "Recibido por cartera")
+        r = self.client.get(reverse("admin:core_carga_cierre", args=[carga.id]))
+        self.assertContains(r, "Devoluciones sin factura")
+        self.assertContains(r, "L-9")

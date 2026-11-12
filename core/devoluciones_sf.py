@@ -194,42 +194,64 @@ def devolucion_para_repartidor(carga, devolucion_id):
 
 
 @transaction.atomic
-def registrar_captura(devolucion, *, cantidades, motivos=None, observaciones=""):
+def registrar_captura(
+    devolucion, *, cantidades=None, motivos=None, lineas_capturadas=None, observaciones=""
+):
     """
     Guarda lo que el repartidor recolectó.
 
-    cantidades: {producto_id: cantidad_recolectada (Decimal > 0)}.
-    motivos: {producto_id: motivo_id} — el motivo de devolución que el
-    entregador agrega a cada producto (Cambio #27.1); es obligatorio para
-    cada producto con cantidad > 0. Si la devolución ya estaba en
-    RECOLECTADA (el repartidor vuelve a corregir antes de que bodega la
-    reciba), se reemplazan las líneas anteriores.
+    lineas_capturadas (Cambio #28): lista de dicts
+    {"producto_id", "cantidad", "motivo_id", "lote", "fecha_vencimiento"}.
+    Un mismo producto puede venir en varias líneas (otro motivo u otro
+    lote); cada una se guarda por separado. Lote y vencimiento son
+    opcionales.
+
+    cantidades / motivos: forma anterior ({producto_id: cantidad} y
+    {producto_id: motivo_id}, una línea por producto); se sigue aceptando.
+
+    El motivo es obligatorio en cada línea con cantidad > 0 (Cambio #27.1).
+    Si la devolución ya estaba en RECOLECTADA (el repartidor vuelve a
+    corregir antes de que bodega la reciba), se reemplazan las líneas
+    anteriores.
     """
+    from core.entregas import leer_fecha_vencimiento, limpiar_lote
+
     if devolucion.estado not in ESTADOS_PARA_REPARTIDOR:
         raise SolicitudError("Esta devolución ya no se puede capturar.")
     if devolucion.carga_id is None:
         raise SolicitudError("Esta devolución no tiene carga asignada.")
 
-    motivos = motivos or {}
+    if lineas_capturadas is None:
+        motivos = motivos or {}
+        lineas_capturadas = [
+            {"producto_id": pid, "cantidad": cant, "motivo_id": motivos.get(pid)}
+            for pid, cant in (cantidades or {}).items()
+        ]
 
     if devolucion.estado == "RECOLECTADA":
         devolucion.detalles.all().delete()
 
     lineas = []
-    for producto_id, cantidad in cantidades.items():
+    for capturada in lineas_capturadas:
+        cantidad = capturada.get("cantidad")
         if not cantidad or cantidad <= 0:
             continue
-        motivo_id = motivos.get(producto_id)
+        motivo_id = capturada.get("motivo_id")
         if not motivo_id:
             raise SolicitudError(
                 "Falta elegir el motivo de devolución de uno o más productos."
             )
+        vence = capturada.get("fecha_vencimiento")
+        if isinstance(vence, str):
+            vence = leer_fecha_vencimiento(vence)
         lineas.append(
             DevolucionSinFacturaDetalle(
                 devolucion=devolucion,
-                producto_id=producto_id,
+                producto_id=capturada["producto_id"],
                 cantidad_recolectada=cantidad,
                 motivo_id=motivo_id,
+                lote=limpiar_lote(capturada.get("lote")),
+                fecha_vencimiento=vence,
             )
         )
     if not lineas:
@@ -254,7 +276,8 @@ def detalles_sin_factura_de_la_carga(carga):
             devolucion__carga=carga, devolucion__estado__in=ESTADOS_CON_CAPTURA
         )
         .select_related(
-            "devolucion__sucursal__cliente", "devolucion__motivo", "producto", "motivo"
+            "devolucion__sucursal__cliente", "devolucion__motivo", "producto", "motivo",
+            "devolucion__revisada_cartera_por",
         )
         .order_by("devolucion__id", "id")
     )
@@ -306,7 +329,7 @@ def resumen_recepcion_sin_factura(carga, detalles=None):
 
 
 @transaction.atomic
-def registrar_recepcion_sin_factura(carga, *, usuario, cantidades, observaciones=""):
+def registrar_recepcion_sin_factura(carga, *, usuario, cantidades, observaciones="", lotes=None):
     """
     Bodega confirma lo recibido de las devoluciones sin factura de esta Carga.
 
@@ -351,10 +374,18 @@ def registrar_recepcion_sin_factura(carga, *, usuario, cantidades, observaciones
             "en las observaciones para poder confirmar."
         )
 
+    # Cambio #28: bodega puede completar o corregir lote y vencimiento
+    # (opcionales). lotes: {id de la línea: (lote, fecha_vencimiento)}; una
+    # línea que no viene en el dict conserva lo que tenía.
+    lotes = lotes or {}
     for d, inventario, merma in nuevos:
         d.recibido_inventario = inventario
         d.recibido_merma = merma
-        d.save(update_fields=["recibido_inventario", "recibido_merma"])
+        campos = ["recibido_inventario", "recibido_merma"]
+        if d.id in lotes:
+            d.lote, d.fecha_vencimiento = lotes[d.id]
+            campos += ["lote", "fecha_vencimiento"]
+        d.save(update_fields=campos)
 
     ids_devolucion = {d.devolucion_id for d, _, _ in nuevos}
     DevolucionSinFactura.objects.filter(id__in=ids_devolucion).update(

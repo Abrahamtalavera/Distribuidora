@@ -240,8 +240,16 @@ def detalle_factura(factura):
     por_linea = {}
     for e in entregas:
         for d in e.lineas.all():
-            info = por_linea.setdefault(d.factura_detalle_id, {"motivos": [], "inventario": CERO, "merma": CERO, "por_recibir": False})
+            info = por_linea.setdefault(d.factura_detalle_id, {"motivos": [], "lotes": [], "inventario": CERO, "merma": CERO, "por_recibir": False})
             if d.cantidad_devuelta > 0:
+                e.tiene_devolucion = True
+                # Cambio #28: lote y vencimiento de lo devuelto.
+                if d.lote or d.fecha_vencimiento:
+                    texto_lote = d.lote or "Sin lote"
+                    if d.fecha_vencimiento:
+                        texto_lote += f" (vence {d.fecha_vencimiento:%d/%m/%Y})"
+                    if texto_lote not in info["lotes"]:
+                        info["lotes"].append(texto_lote)
                 motivo = d.motivo_devolucion or e.motivo_devolucion_general
                 if motivo:
                     texto = motivo.nombre
@@ -256,7 +264,7 @@ def detalle_factura(factura):
                     info["por_recibir"] = True
     productos = []
     for linea in factura.lineas.select_related("producto").order_by("id"):
-        info = por_linea.get(linea.id, {"motivos": [], "inventario": CERO, "merma": CERO, "por_recibir": False})
+        info = por_linea.get(linea.id, {"motivos": [], "lotes": [], "inventario": CERO, "merma": CERO, "por_recibir": False})
         if linea.cantidad_devuelta > 0:
             partes = []
             if info["inventario"]:
@@ -278,6 +286,7 @@ def detalle_factura(factura):
                 "devuelto": linea.cantidad_devuelta,
                 "pendiente": linea.pendiente_entrega,
                 "motivo": "; ".join(info["motivos"]) or ("—" if not linea.cantidad_devuelta else "Sin motivo"),
+                "lotes": "; ".join(info["lotes"]),
                 "bodega": bodega,
                 "por_recibir": info["por_recibir"],
             }

@@ -37,7 +37,7 @@
           <table>
             <thead>
               <tr>
-                <th>Producto</th><th>Factura</th><th>Doc. devolución</th><th>Motivo</th>
+                <th>Producto</th><th>Factura</th><th>Doc. devolución</th><th>Motivo</th><th>Lote</th><th>Vence</th>
                 <th class="r">Reportado</th><th class="r">A inventario</th><th class="r">Merma</th><th class="r">Recibido</th><th class="r">Diferencia</th>
               </tr>
             </thead>
@@ -48,6 +48,13 @@
                 <td>{{ d.entrega.factura.numero_factura }}</td>
                 <td>{{ d.entrega.documento_devolucion|default:"—" }}</td>
                 <td>{{ d.motivo_nombre|default:"—" }}</td>
+                {% if editando %}
+                  <td><input type="text" class="in-txt" name="lote_{{ d.id }}" value="{{ d.valor_lote }}" maxlength="40" placeholder="Lote" aria-label="Lote"></td>
+                  <td><input type="date" class="in-fecha" name="vence_{{ d.id }}" value="{{ d.valor_vence }}" aria-label="Vencimiento"></td>
+                {% else %}
+                  <td style="white-space:nowrap">{{ d.lote|default:"—" }}</td>
+                  <td>{% include "core/_vence.html" with d=d %}</td>
+                {% endif %}
                 <td class="r">{{ d.cantidad_devuelta|cantidad }}</td>
                 {% if editando %}
                   <td class="r"><input type="number" min="0" step="0.001" inputmode="decimal" class="in-num inv" name="inv_{{ d.id }}" value="{{ d.valor_inv }}" placeholder="0"></td>
@@ -63,7 +70,7 @@
               </tr>
               {% endfor %}
               <tr class="tot">
-                <td colspan="4">Total</td>
+                <td colspan="6">Total</td>
                 <td class="r">{{ recepcion.totales.reportado|cantidad }}</td>
                 {% if editando %}
                   <td class="r" id="tInv">—</td><td class="r" id="tMer">—</td><td class="r" id="tRec">—</td><td class="r" id="tDif">—</td>
@@ -78,7 +85,7 @@
           </table>
         </div>
         {% if editando %}
-          <div class="detalle" style="margin-top:8px">Cuenta el producto y escribe cuánto vuelve a inventario y cuánto es merma. Si de un producto no llegó nada, escribe 0.</div>
+          <div class="detalle" style="margin-top:8px">Cuenta el producto y escribe cuánto vuelve a inventario y cuánto es merma. Si de un producto no llegó nada, escribe 0. Lote y vencimiento son opcionales: complétalos o corrígelos si el repartidor no los puso.</div>
         {% endif %}
       </div>
 
@@ -121,7 +128,7 @@
           <table>
             <thead>
               <tr>
-                <th>Producto</th><th>Devolución</th><th>Sucursal</th><th>Motivo general</th><th>Motivo del producto</th>
+                <th>Producto</th><th>Devolución</th><th>Sucursal</th><th>Motivo general</th><th>Motivo del producto</th><th>Lote</th><th>Vence</th>
                 <th class="r">Recolectado</th><th class="r">A inventario</th><th class="r">Merma</th><th class="r">Recibido</th><th class="r">Diferencia</th>
               </tr>
             </thead>
@@ -133,6 +140,13 @@
                 <td>{{ d.devolucion.sucursal.nombre }}</td>
                 <td>{{ d.devolucion.motivo|default:"—" }}</td>
                 <td>{{ d.motivo|default:"—" }}</td>
+                {% if editando_sf %}
+                  <td><input type="text" class="in-txt" name="lotesf_{{ d.id }}" value="{{ d.valor_lote }}" maxlength="40" placeholder="Lote" aria-label="Lote"></td>
+                  <td><input type="date" class="in-fecha" name="vencesf_{{ d.id }}" value="{{ d.valor_vence }}" aria-label="Vencimiento"></td>
+                {% else %}
+                  <td style="white-space:nowrap">{{ d.lote|default:"—" }}</td>
+                  <td>{% include "core/_vence.html" with d=d %}</td>
+                {% endif %}
                 <td class="r">{{ d.cantidad_recolectada|cantidad }}</td>
                 {% if editando_sf %}
                   <td class="r"><input type="number" min="0" step="0.001" inputmode="decimal" class="in-num inv" name="invsf_{{ d.id }}" value="{{ d.valor_inv }}" placeholder="0"></td>
@@ -148,7 +162,7 @@
               </tr>
               {% endfor %}
               <tr class="tot">
-                <td colspan="5">Total</td>
+                <td colspan="7">Total</td>
                 <td class="r">{{ recepcion_sf.totales.reportado|cantidad }}</td>
                 {% if editando_sf %}
                   <td class="r" id="tInvSf">—</td><td class="r" id="tMerSf">—</td><td class="r" id="tRecSf">—</td><td class="r" id="tDifSf">—</td>
@@ -163,7 +177,7 @@
           </table>
         </div>
         {% if editando_sf %}
-          <div class="detalle" style="margin-top:8px">Cuenta el producto y escribe cuánto vuelve a inventario y cuánto es merma. Si de un producto no llegó nada, escribe 0.</div>
+          <div class="detalle" style="margin-top:8px">Cuenta el producto y escribe cuánto vuelve a inventario y cuánto es merma. Si de un producto no llegó nada, escribe 0. Lote y vencimiento son opcionales: complétalos o corrígelos si el repartidor no los puso.</div>
         {% endif %}
       </div>
 

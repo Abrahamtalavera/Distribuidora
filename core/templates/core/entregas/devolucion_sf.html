@@ -51,6 +51,13 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+  /* Cambio #28: lote y vencimiento por línea */
+  .lote-vence { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px; margin-top:8px; background:#fffaf0; border:1px dashed #d9a441; border-radius:8px; padding:8px; }
+  .lote-vence .campo-cantidad { min-width:0; }
+  .lote-vence input { width:100%; box-sizing:border-box; }
+  .btn-otra-linea { width:100%; min-height:44px; margin-top:10px; border:1px dashed var(--primary); background:var(--accent-light); color:var(--primary-dark); border-radius:8px; font-size:13.5px; font-weight:600; font-family:inherit; cursor:pointer; }
+</style>
 <script>
 (function () {
   "use strict";
@@ -60,7 +67,6 @@
   var filas = document.getElementById("filasProductos");
   var sinLineas = document.getElementById("sinLineas");
   var aviso = document.getElementById("avisoJs");
-  var agregados = {};
   var contador = 0;
 
   var previas = {{ lineas_previas_json|safe }};
@@ -87,36 +93,65 @@
     sinLineas.classList.toggle("oculto", filas.children.length > 0);
   }
 
-  function agregarFila(producto, cantidadInicial, motivoIdInicial) {
-    if (agregados[producto.id]) {
-      var existente = agregados[producto.id].querySelector("input.cant");
-      existente.value = (parseFloat(existente.value || "0") + (cantidadInicial ? parseFloat(cantidadInicial) : 1));
-      return;
-    }
+  // Cambio #28: el mismo producto puede ir en varias líneas (otro motivo u
+  // otro lote), cada una con su lote y fecha de vencimiento (opcionales).
+  function renumerar() {
+    var porProducto = {};
+    filas.querySelectorAll(".linea-producto").forEach(function (f) {
+      (porProducto[f.dataset.producto] = porProducto[f.dataset.producto] || []).push(f);
+    });
+    Object.keys(porProducto).forEach(function (pid) {
+      var grupo = porProducto[pid];
+      grupo.forEach(function (f, i) {
+        f.querySelector(".num-linea").textContent = grupo.length > 1 ? " · línea " + (i + 1) + " de " + grupo.length : "";
+      });
+    });
+  }
+
+  function agregarFila(producto, cantidadInicial, motivoIdInicial, loteInicial, venceInicial, despuesDe) {
     contador++;
     var fila = document.createElement("div");
     fila.className = "linea-producto";
+    fila.dataset.producto = producto.id;
     fila.innerHTML =
-      '<input type="hidden" name="producto_id" value="' + producto.id + '">' +
+      '<input type="hidden" name="producto_id" value="' + escapar(String(producto.id)) + '">' +
       '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">' +
         '<div><div class="nombre-producto">' + escapar(producto.nombre) + '</div>' +
-        '<div class="cant-facturada">' + escapar(producto.codigo) + '</div></div>' +
+        '<div class="cant-facturada">' + escapar(producto.codigo) + '<span class="num-linea"></span></div></div>' +
         '<button type="button" class="btn-quitar" title="Quitar">&times;</button></div>' +
       '<div class="campo-cantidad" style="margin-top:8px;"><label>Cantidad recolectada</label>' +
-      '<input type="number" name="cantidad" class="cant" min="0" step="0.001" inputmode="decimal" value="' + (cantidadInicial || "1") + '"></div>' +
+      '<input type="number" name="cantidad" class="cant" min="0" step="0.001" inputmode="decimal" value="' + escapar(String(cantidadInicial || "1")) + '"></div>' +
+      '<div class="lote-vence">' +
+        '<div class="campo-cantidad"><label>Lote</label>' +
+        '<input type="text" name="lote" class="lote" maxlength="40" placeholder="Opcional" autocomplete="off"></div>' +
+        '<div class="campo-cantidad"><label>Vencimiento</label>' +
+        '<input type="date" name="fecha_vencimiento" class="vence"></div>' +
+      '</div>' +
       '<div class="campo-cantidad" style="margin-top:8px;"><label>Motivo de devolución</label>' +
-      '<select name="motivo_id" class="motivo-sel" required>' + opcionesMotivo(motivoIdInicial) + '</select></div>';
+      '<select name="motivo_id" class="motivo-sel" required>' + opcionesMotivo(motivoIdInicial) + '</select></div>' +
+      '<button type="button" class="btn-otra-linea">+ Otra línea de este producto (otro motivo o lote)</button>';
+    fila.querySelector(".lote").value = loteInicial || "";
+    fila.querySelector(".vence").value = venceInicial || "";
     fila.querySelector(".btn-quitar").addEventListener("click", function () {
-      delete agregados[producto.id];
       fila.remove();
+      renumerar();
       actualizarVacio();
     });
-    agregados[producto.id] = fila;
-    filas.appendChild(fila);
+    fila.querySelector(".btn-otra-linea").addEventListener("click", function () {
+      var nueva = agregarFila(producto, "1", "", "", "", fila);
+      nueva.querySelector(".cant").focus();
+    });
+    if (despuesDe && despuesDe.nextSibling) {
+      filas.insertBefore(fila, despuesDe.nextSibling);
+    } else {
+      filas.appendChild(fila);
+    }
+    renumerar();
     actualizarVacio();
+    return fila;
   }
 
-  previas.forEach(function (l) { agregarFila(l.producto, l.cantidad, l.motivo_id); });
+  previas.forEach(function (l) { agregarFila(l.producto, l.cantidad, l.motivo_id, l.lote, l.fecha_vencimiento); });
 
   var temporizador = null;
   input.addEventListener("input", function () {

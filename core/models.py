@@ -627,6 +627,24 @@ class Entrega(models.Model):
         null=True, blank=True, verbose_name="Precisión GPS (m)"
     )
 
+    # --- Cambio #28: revisión de cartera de la devolución de esta visita ----
+    # Un analista de cartera "da por enterado" que revisó lo devuelto, y la
+    # devolución pasa a "Recibido por cartera". Solo se puede después de que
+    # bodega recibió la devolución.
+    revisada_cartera_en = models.DateTimeField(
+        null=True, blank=True, editable=False, verbose_name="Recibido por cartera el"
+    )
+    revisada_cartera_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        editable=False,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        verbose_name="Recibido por cartera (usuario)",
+    )
+    comentario_cartera = models.TextField(blank=True, verbose_name="Comentario de cartera")
+
     class Meta:
         verbose_name_plural = "Entregas"
 
@@ -646,6 +664,15 @@ class EntregaDetalle(models.Model):
         on_delete=models.SET_NULL,
         related_name="lineas_entrega",
         help_text="Motivo de devolución específico de este producto, si aplica.",
+    )
+    # Cambio #28: lote y vencimiento del producto devuelto. Son opcionales:
+    # el repartidor los llena si puede, y bodega los completa o corrige al
+    # recibir. Desde este cambio, un mismo producto de la factura puede
+    # tener varias líneas en la misma visita (una por motivo/lote); las
+    # líneas extra llevan cantidad_entregada = 0 y solo su parte devuelta.
+    lote = models.CharField(max_length=40, blank=True, verbose_name="Lote")
+    fecha_vencimiento = models.DateField(
+        null=True, blank=True, verbose_name="Fecha de vencimiento"
     )
     # Cambio #16: lo que bodega de producto terminado recibió de esta
     # devolución, separado por destino. Vacío (None) = todavía no se ha
@@ -668,6 +695,13 @@ class EntregaDetalle(models.Model):
     class Meta:
         verbose_name = "Línea de entrega"
         verbose_name_plural = "Líneas de entrega"
+
+    @property
+    def esta_vencido(self):
+        """Cambio #28: True si la fecha de vencimiento ya pasó."""
+        from django.utils import timezone
+
+        return bool(self.fecha_vencimiento and self.fecha_vencimiento < timezone.localdate())
 
     @property
     def recepcion_registrada(self):
@@ -923,16 +957,47 @@ class DevolucionSinFactura(models.Model):
         help_text="Obligatoria cuando lo recibido en bodega no coincide con lo recolectado.",
     )
 
+    # --- Cambio #28: revisión de cartera (después de la recepción en bodega)
+    revisada_cartera_en = models.DateTimeField(
+        null=True, blank=True, editable=False, verbose_name="Recibido por cartera el"
+    )
+    revisada_cartera_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        editable=False,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        verbose_name="Recibido por cartera (usuario)",
+    )
+    comentario_cartera = models.TextField(blank=True, verbose_name="Comentario de cartera")
+
     class Meta:
         verbose_name = "Devolución sin factura"
         verbose_name_plural = "Devoluciones sin factura"
         ordering = ["-creada_en"]
         permissions = [
             ("solicitar_devoluciones_sin_factura", "Puede solicitar devoluciones sin factura"),
+            ("revisar_devoluciones_cartera", "Puede dar por enterada una devolución (cartera)"),
         ]
 
     def __str__(self):
         return self.codigo_reporte
+
+    @property
+    def recibida_por_cartera(self):
+        return self.revisada_cartera_en is not None
+
+    @property
+    def estado_mostrar(self):
+        """Estado para pantallas y reportes: incluye "Recibido por cartera" (Cambio #28)."""
+        if self.recibida_por_cartera:
+            return "Recibido por cartera"
+        return self.get_estado_display()
+
+    @property
+    def estado_css(self):
+        return "CARTERA" if self.recibida_por_cartera else self.estado
 
     @property
     def codigo_reporte(self):
@@ -962,6 +1027,12 @@ class DevolucionSinFacturaDetalle(models.Model):
         verbose_name="Motivo de devolución",
         help_text="Motivo de este producto en particular, agregado por el entregador al recibirlo.",
     )
+    # Cambio #28: lote y vencimiento (opcionales; bodega puede completarlos).
+    # Un mismo producto puede venir en varias líneas, una por motivo o lote.
+    lote = models.CharField(max_length=40, blank=True, verbose_name="Lote")
+    fecha_vencimiento = models.DateField(
+        null=True, blank=True, verbose_name="Fecha de vencimiento"
+    )
     # Cambio #27: lo que bodega de producto terminado recibió, separado por
     # destino, igual que en EntregaDetalle (Cambio #16).
     recibido_inventario = models.DecimalField(
@@ -985,6 +1056,13 @@ class DevolucionSinFacturaDetalle(models.Model):
 
     def __str__(self):
         return f"{self.devolucion.codigo_reporte} / {self.producto.codigo}"
+
+    @property
+    def esta_vencido(self):
+        """Cambio #28: True si la fecha de vencimiento ya pasó."""
+        from django.utils import timezone
+
+        return bool(self.fecha_vencimiento and self.fecha_vencimiento < timezone.localdate())
 
     @property
     def recepcion_registrada(self):
