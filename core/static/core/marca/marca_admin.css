@@ -1,0 +1,76 @@
+@import url("fuentes.css");
+/*
+ * Cambio #30: el admin con la marca Sol Maya (colores del manual, logo,
+ * patrón maya y ornamento). Se carga después de los estilos del admin.
+ */
+:root {
+  --primary: #2C318C;
+  --secondary: #2C318C;
+  --accent: #E97324;
+  --primary-fg: #fff;
+  --header-color: #fff;
+  --header-branding-color: #fff;
+  --header-bg: #2C318C;
+  --header-link-color: #fff;
+  --breadcrumbs-fg: #D2D4F0;
+  --breadcrumbs-link-fg: #fff;
+  --breadcrumbs-bg: #1F2366;
+  --link-fg: #2C318C;
+  --link-hover-color: #B5531A;
+  --link-selected-fg: #1F2366;
+  --button-bg: #2C318C;
+  --button-hover-bg: #1F2366;
+  --default-button-bg: #E97324;
+  --default-button-hover-bg: #B5531A;
+  --selected-row: #FDEEE3;
+  --message-success-bg: #EEF4E3;
+  --message-warning-bg: #FDEEE3;
+  --message-error-bg: #FCE4E4;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --primary: #2C318C;
+    --breadcrumbs-bg: #1F2366;
+    --link-fg: #A9AEF0;
+    --link-hover-color: #F3A36C;
+    --link-selected-fg: #C9CCF6;
+    --selected-row: #3A2414;
+  }
+}
+html[data-theme="dark"] {
+  --primary: #2C318C;
+  --breadcrumbs-bg: #1F2366;
+  --link-fg: #A9AEF0;
+  --link-hover-color: #F3A36C;
+  --link-selected-fg: #C9CCF6;
+  --selected-row: #3A2414;
+}
+
+#header {
+  background-color: var(--header-bg);
+  background-image: url("motivo_esquina.svg");
+  background-repeat: no-repeat;
+  background-position: right -40px top -46px;
+  background-size: 120px auto;
+  border-bottom: 4px solid var(--accent);
+}
+#header #user-tools { margin-right: 70px; }
+#site-name a { display: inline-flex; align-items: center; gap: 12px; font-family: "Baloo 2", system-ui, sans-serif; font-weight: 700; }
+#site-name img { height: 40px; width: auto; display: block; }
+#site-name .sm-sub { font-size: 17px; font-weight: 600; color: #fff; }
+div.breadcrumbs { background: var(--breadcrumbs-bg); }
+#content h1, .module h2, .module caption, .inline-group h2 {
+  font-family: "Baloo 2", system-ui, sans-serif;
+}
+.module h2, .module caption, .inline-group h2 { background: var(--primary); }
+#content h1 { color: var(--primary); font-weight: 700; }
+html[data-theme="dark"] #content h1 { color: #C9CCF6; }
+@media (prefers-color-scheme: dark) { html:not([data-theme="light"]) #content h1 { color: #C9CCF6; } }
+#content h1::after {
+  content: ""; display: block; width: 40px; height: 3px; margin-top: 4px; border-radius: 2px; background: var(--accent);
+}
+/* Patrón maya de fondo en la pantalla de inicio de sesión */
+body.login { background-image: url("patron_maya.svg"); background-size: 150px auto; }
+body.login #header { justify-content: center; }
+body.login #header #site-name a { flex-direction: column; gap: 4px; }
+body.login #header #site-name img { height: 64px; }

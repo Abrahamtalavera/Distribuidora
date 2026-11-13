@@ -82,7 +82,7 @@
         <td class="r">{{ d.cantidad|cantidad }}</td>
         <td class="r">{% if d.valor is not None %}<span class="dev">{{ d.valor|moneda }}</span>{% else %}—{% endif %}</td>
         <td>{{ d.bodega }}{% if d.inventario is not None or d.merma is not None %}<div class="detalle">{{ d.inventario|cantidad|default:"0" }} inv. · {{ d.merma|cantidad|default:"0" }} merma</div>{% endif %}</td>
-        <td>{% if d.cartera_en %}<span style="font-weight:700;color:#0a5850;white-space:nowrap;">✓ Recibido por cartera</span><div class="detalle">{{ d.cartera_por|default:"—" }} · {{ d.cartera_en|date:"d/m/Y H:i" }}</div>{% else %}<span class="detalle">Pendiente</span>{% endif %}</td>
+        <td>{% if d.cartera_en %}<span style="font-weight:700;color:#4F6B22;white-space:nowrap;">✓ Recibido por cartera</span><div class="detalle">{{ d.cartera_por|default:"—" }} · {{ d.cartera_en|date:"d/m/Y H:i" }}</div>{% else %}<span class="detalle">Pendiente</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </table>

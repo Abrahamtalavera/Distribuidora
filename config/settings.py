@@ -33,13 +33,15 @@ CSRF_TRUSTED_ORIGINS.append("https://*.up.railway.app")
 
 
 INSTALLED_APPS = [
+    # Cambio #30: "core" va primero para que su admin/base_site.html (con la
+    # marca Sol Maya) tenga prioridad sobre la plantilla del admin de Django.
+    "core",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "core",
 ]
 
 MIDDLEWARE = [

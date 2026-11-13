@@ -903,6 +903,10 @@ class ConsignacionAdmin(admin.ModelAdmin):
 
 # Cambio #19: el inicio del admin muestra el acceso al tablero de operación.
 admin.site.index_template = "admin/index_sol_maya.html"
+# Cambio #30: nombres del sitio con la marca.
+admin.site.site_header = "Sol Maya · Distribución"
+admin.site.site_title = "Sol Maya"
+admin.site.index_title = "Administración"
 
 
 # Cambio #22: llegadas a clientes y registro de horas corregidas (solo lectura).

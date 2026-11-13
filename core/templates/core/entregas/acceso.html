@@ -10,6 +10,11 @@
 {% endblock %}
 
 {% block content %}
+{% load static %}
+{# Cambio #30: logo de la marca en el acceso del repartidor. #}
+<div style="text-align:center; padding:22px 0 14px;">
+  <img src="{% static 'core/marca/logo_sol_maya_color.png' %}" alt="Sol Maya" style="width:150px; height:auto;">
+</div>
 <form method="post" id="form-acceso">
   {% csrf_token %}
   <div class="seccion">

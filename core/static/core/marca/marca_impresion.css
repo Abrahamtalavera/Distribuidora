@@ -1,0 +1,38 @@
+@import url("fuentes.css");
+/*
+ * Cambio #30: reportes imprimibles con la marca Sol Maya, como la papelería
+ * del manual (logo, azul corporativo y línea naranja).
+ */
+.encabezado-doc, .enc {
+  border-bottom: 3px solid #E97324 !important;
+  position: relative;
+}
+.titulo-reporte, .enc h1 {
+  color: #2C318C;
+  font-family: "Baloo 2", Arial, sans-serif;
+  letter-spacing: 0 !important;
+}
+.page h2, .seccion-titulo {
+  color: #2C318C;
+  border-bottom-color: #E97324 !important;
+}
+.page th { color: #2C318C; }
+.carga-box { border-color: #2C318C !important; }
+.barra-acciones a, .barra-acciones button { background: #2C318C; border-color: #2C318C; }
+.barra-acciones a.secundario { background: #fff; color: #2C318C; }
+/* Ornamento de la papelería en la esquina superior derecha de la hoja */
+.page { position: relative; overflow: hidden; }
+.page::before {
+  content: "";
+  position: absolute;
+  top: -22px;
+  right: -22px;
+  width: 92px;
+  height: 82px;
+  background: url("motivo_esquina.svg") no-repeat right top / contain;
+  opacity: .55;
+  pointer-events: none;
+}
+@media print {
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

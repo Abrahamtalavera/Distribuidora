@@ -1,0 +1,19 @@
+{% extends "admin/base.html" %}
+{% load static %}
+{% comment %}Cambio #30: admin con la marca Sol Maya.{% endcomment %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | Sol Maya{% endblock %}
+
+{% block extrastyle %}{{ block.super }}
+<link rel="stylesheet" href="{% static 'core/marca/marca_admin.css' %}">
+<link rel="icon" type="image/png" href="{% static 'core/marca/logo_sol_maya_color.png' %}">
+{% endblock %}
+
+{% block branding %}
+<div id="site-name"><a href="{% url 'admin:index' %}"><img src="{% static 'core/marca/logo_sol_maya_fondo_azul.png' %}" alt="Sol Maya"><span class="sm-sub">Distribución</span></a></div>
+{% if user.is_anonymous %}
+  {% include "admin/color_theme_toggle.html" %}
+{% endif %}
+{% endblock %}
+
+{% block nav-global %}{% endblock %}

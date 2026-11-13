@@ -1,0 +1,192 @@
+@import url("fuentes.css");
+/*
+ * Cambio #30: identidad de marca Sol Maya (Manual de Marca, edición 2025).
+ *
+ * Colores corporativos (Pantone, tomados del manual):
+ *   Blue 072 C  #2C318C  azul corporativo (principal)
+ *   152 C       #E97324  naranja
+ *   377 C       #7A9C3E  verde
+ *   1675 C      #AE4627  terracota
+ *   485 C       #E12829  rojo
+ *   675 C       #B52473  magenta
+ *   424 C       #727473  gris
+ *
+ * Motivos: patrón maya de fondo (rombos y grecas) y ornamento textil naranja
+ * en las esquinas. Títulos al estilo del manual: azul con barra naranja.
+ * Tipografía: el manual usa Bree (títulos) y DIN Pro (texto), que son de
+ * pago; aquí se usan sus equivalentes libres más cercanos, Baloo 2 y Barlow.
+ *
+ * Esta hoja se carga DESPUÉS de los estilos propios de cada pantalla: cambia
+ * sus variables de color y agrega los motivos, sin tocar el resto.
+ */
+
+:root {
+  --sm-azul: #2C318C;
+  --sm-azul-oscuro: #1F2366;
+  --sm-azul-claro: #ECEDF7;
+  --sm-naranja: #E97324;
+  --sm-naranja-oscuro: #B5531A;
+  --sm-naranja-claro: #FDEEE3;
+  --sm-verde: #7A9C3E;
+  --sm-verde-oscuro: #4F6B22;
+  --sm-verde-claro: #EEF4E3;
+  --sm-terracota: #AE4627;
+  --sm-terracota-claro: #F8E7E1;
+  --sm-rojo: #E12829;
+  --sm-rojo-oscuro: #B71C1D;
+  --sm-rojo-claro: #FCE4E4;
+  --sm-magenta: #B52473;
+  --sm-magenta-claro: #F7E3EE;
+  --sm-gris: #727473;
+  --sm-gris-claro: #F1F1F2;
+  --sm-fondo: #F6F6F9;
+  --sm-titulos: "Baloo 2", "Trebuchet MS", system-ui, sans-serif;
+  --sm-texto: "Barlow", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+
+  /* Variables que ya usan las pantallas de la app */
+  --primary: var(--sm-azul);
+  --primary-dark: var(--sm-azul-oscuro);
+  --accent: var(--sm-naranja);
+  --accent-light: var(--sm-azul-claro);
+  --border: #DCDDE6;
+  --text: #23243A;
+  --muted: #64656F;
+  --ok: var(--sm-verde-oscuro);
+  --ok-bg: var(--sm-verde-claro);
+  --warn: var(--sm-terracota);
+  --warn-bg: var(--sm-naranja-claro);
+  --pend: var(--sm-gris);
+  --pend-bg: var(--sm-gris-claro);
+  --danger: var(--sm-rojo-oscuro);
+  --danger-bg: var(--sm-rojo-claro);
+}
+
+/* ---- Fondo con el patrón maya ------------------------------------------ */
+body {
+  font-family: var(--sm-texto);
+  background-color: var(--sm-fondo);
+  background-image: url("patron_maya.svg");
+  background-size: 150px auto;
+  background-repeat: repeat;
+}
+
+button, input, select, textarea { font-family: inherit; }
+
+h1, h2, .desk-head h1, header.app-header .titulo, .cabecera .num {
+  font-family: var(--sm-titulos);
+  letter-spacing: 0;
+}
+
+/* ---- Encabezados azules con logo y ornamento ---------------------------- */
+.desk { border-color: var(--border); border-radius: 12px; overflow: hidden; box-shadow: 0 2px 14px rgba(44, 49, 140, .08); }
+
+.desk-head {
+  position: relative;
+  background-color: var(--sm-azul);
+  background-image:
+    url("motivo_esquina.svg"),
+    url("logo_sol_maya_fondo_azul.png");
+  background-repeat: no-repeat, no-repeat;
+  background-position: right -26px top -30px, left 20px center;
+  background-size: 116px auto, 78px auto;
+  padding-left: 112px;
+  padding-right: 96px;
+  min-height: 66px;
+  border-bottom: 4px solid var(--sm-naranja);
+}
+.desk-head h1 { font-size: 21px; font-weight: 700; line-height: 1.15; }
+.desk-head .sub { opacity: .92; }
+@media (max-width: 560px) {
+  .desk-head { padding-left: 88px; padding-right: 20px; background-size: 84px auto, 60px auto; background-position: right -30px top -34px, left 14px top 16px; }
+}
+
+/* Pantallas de acceso: logo a color sobre blanco, encima del formulario */
+.desk.angosto .desk-head {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 104px 20px 16px;
+  background-color: #fff;
+  background-image: url("motivo_esquina.svg"), url("logo_sol_maya_color.png");
+  background-position: right -30px top -34px, center 18px;
+  background-size: 110px auto, 140px auto;
+  color: var(--sm-azul);
+}
+.desk.angosto .desk-head h1 { color: var(--sm-azul); }
+.desk.angosto .desk-head .sub { color: var(--muted); }
+
+/* Encabezado del celular del repartidor */
+header.app-header {
+  background-color: var(--sm-azul);
+  background-image: url("motivo_esquina.svg");
+  background-repeat: no-repeat;
+  background-position: right -34px top -40px;
+  background-size: 104px auto;
+  border-bottom: 3px solid var(--sm-naranja);
+}
+header.app-header .titulo { font-size: 17px; font-weight: 700; }
+.progreso-fill { background: var(--sm-naranja); }
+
+/* ---- Títulos de sección: azul con barra naranja (como el manual) -------- */
+.seccion h3, .tarjeta h3, .bloque h3 {
+  font-family: var(--sm-titulos);
+  font-size: 16px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--sm-azul);
+}
+.seccion h3::after, .tarjeta h3::after, .bloque h3::after {
+  content: "";
+  display: block;
+  width: 34px;
+  height: 3px;
+  margin-top: 4px;
+  border-radius: 2px;
+  background: var(--sm-naranja);
+}
+.seccion { border-color: var(--border); }
+th { color: var(--sm-azul); }
+
+/* ---- Botones y enlaces ---------------------------------------------------- */
+a { color: var(--sm-azul); }
+a:hover { color: var(--sm-naranja-oscuro); }
+.btn, .btn-guardar { background-color: var(--sm-azul); }
+.btn:hover, .btn-guardar:hover { background-color: var(--sm-azul-oscuro); }
+/* Confirmar / guardar: verde de la marca */
+.btn-pri, .btn-cerrar, .btn-enterado { background-color: var(--sm-verde-oscuro); }
+.btn-pri:hover, .btn-cerrar:hover, .btn-enterado:hover { background-color: #3E5619; }
+.btn-marcar { border-color: var(--sm-azul); color: var(--sm-azul); }
+.est-RECIBIDA, .badge-CARTERA { background: var(--sm-verde-claro) !important; color: var(--sm-verde-oscuro) !important; }
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid var(--sm-naranja);
+  outline-offset: 0;
+  border-color: var(--sm-naranja);
+}
+
+/* Pestañas: la activa con subrayado naranja */
+.pestanas a.activa { border-bottom-color: var(--sm-naranja) !important; }
+
+/* ---- Indicadores (antes en amarillo) con los colores de la marca --------- */
+.pill, .estado-pill, .estado-carga {
+  background: var(--sm-naranja-claro);
+  color: #8A3F0E;
+}
+.pill.ok, .estado-pill.cerrada, .estado-carga.ruta {
+  background: var(--sm-verde-claro);
+  color: var(--sm-verde-oscuro);
+}
+.pill.dif { background: var(--sm-rojo-claro); color: var(--sm-rojo-oscuro); }
+.badge-cargada { background: var(--sm-azul-claro); color: var(--sm-azul); }
+.factura-card.cargada { border-color: #B9BCE6; background: #F7F8FD; }
+.badge-credito { background: var(--sm-magenta-claro); color: var(--sm-magenta); }
+.paso.hecho .barra { background: var(--sm-naranja); }
+
+/* Fondo del marco del celular */
+.phone-frame { background: #fff; }
+
+/* Barra de pestañas (tablero, ventas y devoluciones) */
+.pestanas { background: var(--sm-azul-oscuro); }
+.pestanas a { color: #D2D4F0; }
+.pestanas a:hover { color: #fff; }
+.pestanas a.activa { color: #fff; }
