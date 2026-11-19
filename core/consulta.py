@@ -326,7 +326,7 @@ def periodo_por_defecto():
     return hasta - timedelta(days=DIAS_POR_DEFECTO - 1), hasta
 
 
-def listado(desde, hasta, ruta_id=None, vendedor_id=None, estado=""):
+def listado(desde, hasta, ruta_id=None, vendedor_id=None, estado="", sucursal_id=None):
     """
     Facturas emitidas entre `desde` y `hasta` (incluidas). La ruta es la de
     la carga en la que va o en la que se visitó la factura; con una ruta
@@ -338,6 +338,8 @@ def listado(desde, hasta, ruta_id=None, vendedor_id=None, estado=""):
         qs = qs.filter(Q(carga__ruta_id=ruta_id) | Q(entregas__carga__ruta_id=ruta_id)).distinct()
     if vendedor_id:
         qs = qs.filter(vendedor_id=vendedor_id)
+    if sucursal_id:  # Cambio #32
+        qs = qs.filter(sucursal_id=sucursal_id)
     qs = qs.order_by("-fecha_emision", "-numero_factura")
 
     filas = list(qs[: MAX_FILAS_LISTADO + 1])
@@ -384,7 +386,9 @@ def _estado_bodega(d):
     return "Recibida"
 
 
-def detalle_devoluciones(facturas, desde, hasta, ruta_id=None, incluir_sin_factura=True):
+def detalle_devoluciones(
+    facturas, desde, hasta, ruta_id=None, incluir_sin_factura=True, sucursal_id=None
+):
     """
     Cambio #28: una fila por producto devuelto, para la consulta por ruta de
     ventas y su Excel.
@@ -475,6 +479,8 @@ def detalle_devoluciones(facturas, desde, hasta, ruta_id=None, incluir_sin_factu
         )
         if ruta_id:
             detalles = detalles.filter(devolucion__carga__ruta_id=ruta_id)
+        if sucursal_id:  # Cambio #32
+            detalles = detalles.filter(devolucion__sucursal_id=sucursal_id)
         for d in detalles:
             dev = d.devolucion
             carga = dev.carga

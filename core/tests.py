@@ -1877,3 +1877,24 @@ class ConsultaRutaSucursalTests(Cambio28Base):
         self.assertContains(r, "<th>Sucursal</th>", count=1)
         self.assertContains(r, self.sucursal.nombre)
         self.assertContains(r, "tabla-compacta")
+
+    def test_filtro_por_sucursal(self):
+        otra = Sucursal.objects.create(cliente=self.cliente, nombre="Sucursal Norte 32")
+        self.factura("F-32A", sucursal=self.sucursal)
+        self.factura("F-32B", sucursal=otra)
+        u = User.objects.create_user("consulta32", password="x")
+        u.groups.add(Group.objects.get(name="Ventas"))
+        self.client.force_login(u)
+        filtros = {"desde": self.hoy.isoformat(), "hasta": self.hoy.isoformat(), "sucursal": otra.pk}
+        r = self.client.get(reverse("ventas_ruta"), filtros)
+        self.assertContains(r, "F-32B")
+        self.assertNotContains(r, "F-32A")
+        self.assertContains(r, f'value="{otra.pk}" ')
+        r = self.client.get(reverse("ventas_ruta_excel"), filtros)
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        hoja = load_workbook(BytesIO(r.content))["Facturas"]
+        facturas = [f[0] for f in hoja.iter_rows(min_row=4, values_only=True) if f[0]]
+        self.assertEqual(facturas, ["F-32B"])
