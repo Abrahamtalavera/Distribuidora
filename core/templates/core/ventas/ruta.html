@@ -27,20 +27,6 @@
       {% for clave, nombre in estados %}<option value="{{ clave }}" {% if clave == estado %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
     </select>
   </div>
-  {# Cambio #32: filtro por sucursal, agrupadas por cliente, con buscador. #}
-  <div style="min-width:240px;">
-    <label for="sucursal">Sucursal</label>
-    <input type="search" id="buscarSucursal" placeholder="Buscar cliente o sucursal" autocomplete="off" style="display:block;width:100%;margin-bottom:4px;">
-    <select id="sucursal" name="sucursal" style="width:100%;">
-      <option value="">Todas</option>
-      {% regroup sucursales by cliente as por_cliente %}
-      {% for grupo in por_cliente %}
-      <optgroup label="{{ grupo.grouper.nombre }}">
-        {% for s in grupo.list %}<option value="{{ s.pk }}" data-buscar="{{ grupo.grouper.nombre|lower }} {{ grupo.grouper.codigo|lower }} {{ s.nombre|lower }}" {% if s.pk == sucursal_id %}selected{% endif %}>{{ s.nombre }}</option>{% endfor %}
-      </optgroup>
-      {% endfor %}
-    </select>
-  </div>
   <div>
     <label for="vendedor">Vendedor</label>
     <select id="vendedor" name="vendedor">
@@ -123,26 +109,4 @@
   <span>Fechas por fecha de emisión. Toca un número de factura para ver su detalle.</span>
   {% if facturas or devoluciones %}<a class="btn-claro" href="{% url 'ventas_ruta_excel' %}?{{ consulta }}">Descargar en Excel (facturas y devoluciones)</a>{% endif %}
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-(function () {
-  var buscar = document.getElementById("buscarSucursal");
-  var sel = document.getElementById("sucursal");
-  if (!buscar || !sel) return;
-  buscar.addEventListener("input", function () {
-    var q = buscar.value.trim().toLowerCase();
-    sel.querySelectorAll("optgroup").forEach(function (g) {
-      var visibles = 0;
-      g.querySelectorAll("option").forEach(function (o) {
-        var ok = !q || o.getAttribute("data-buscar").indexOf(q) !== -1;
-        o.hidden = !ok;
-        if (ok) visibles++;
-      });
-      g.hidden = visibles === 0;
-    });
-  });
-})();
-</script>
 {% endblock %}

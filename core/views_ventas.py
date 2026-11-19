@@ -31,7 +31,7 @@ from core.consulta import (
     periodo_por_defecto,
     puede_consultar,
 )
-from core.models import Ruta, Sucursal, Vendedor
+from core.models import Ruta, Vendedor
 from core.tablero import puede_ver_tablero
 
 
@@ -126,7 +126,6 @@ def _filtros_listado(request):
         "hasta": hasta,
         "ruta_id": _leer_id(request.GET.get("ruta")),
         "vendedor_id": _leer_id(request.GET.get("vendedor")),
-        "sucursal_id": _leer_id(request.GET.get("sucursal")),
         "estado": estado,
         "aviso": aviso,
     }
@@ -137,14 +136,13 @@ def ventas_ruta_view(request):
     filtros = _filtros_listado(request)
     facturas, resumen, recortado = listado(
         filtros["desde"], filtros["hasta"], filtros["ruta_id"],
-        filtros["vendedor_id"], filtros["estado"], filtros["sucursal_id"],
+        filtros["vendedor_id"], filtros["estado"],
     )
     # Cambio #28: detalle de las devoluciones (producto, motivo, lote,
     # vencimiento, bodega y cartera) de lo que muestra el listado.
     devoluciones = detalle_devoluciones(
         facturas, filtros["desde"], filtros["hasta"], filtros["ruta_id"],
         incluir_sin_factura=not (filtros["vendedor_id"] or filtros["estado"]),
-        sucursal_id=filtros["sucursal_id"],
     )
     contexto = _contexto_base(request, "ruta")
     contexto.update(filtros)
@@ -156,10 +154,6 @@ def ventas_ruta_view(request):
             "max_filas": MAX_FILAS_LISTADO,
             "rutas": Ruta.objects.order_by("nombre"),
             "vendedores": Vendedor.objects.filter(tipo="VENDEDOR").order_by("nombre"),
-            # Cambio #32: filtro por sucursal (agrupadas por cliente).
-            "sucursales": Sucursal.objects.filter(activo=True)
-            .select_related("cliente")
-            .order_by("cliente__nombre", "nombre"),
             "estados": [(clave, nombre) for clave, (nombre, _) in FILTROS_ESTADO.items()],
             "consulta": request.GET.urlencode(),
             "devoluciones": devoluciones[:MAX_FILAS_DEVOLUCIONES_PANTALLA],
@@ -176,22 +170,16 @@ def ventas_ruta_excel_view(request):
     filtros = _filtros_listado(request)
     facturas, _, _ = listado(
         filtros["desde"], filtros["hasta"], filtros["ruta_id"],
-        filtros["vendedor_id"], filtros["estado"], filtros["sucursal_id"],
+        filtros["vendedor_id"], filtros["estado"],
     )
     ruta = Ruta.objects.filter(pk=filtros["ruta_id"]).first() if filtros["ruta_id"] else None
-    sucursal = (
-        Sucursal.objects.select_related("cliente").filter(pk=filtros["sucursal_id"]).first()
-        if filtros["sucursal_id"] else None
-    )
     titulo = (
         f"Facturas {ruta.nombre if ruta else 'todas las rutas'} · "
-        + (f"{sucursal.cliente.nombre} — {sucursal.nombre} · " if sucursal else "")
-        + f"{filtros['desde']:%d/%m/%Y} al {filtros['hasta']:%d/%m/%Y}"
+        f"{filtros['desde']:%d/%m/%Y} al {filtros['hasta']:%d/%m/%Y}"
     )
     devoluciones = detalle_devoluciones(
         facturas, filtros["desde"], filtros["hasta"], filtros["ruta_id"],
         incluir_sin_factura=not (filtros["vendedor_id"] or filtros["estado"]),
-        sucursal_id=filtros["sucursal_id"],
     )
     contenido = excel_listado(facturas, titulo, devoluciones)
     nombre = f"facturas_{filtros['desde']:%Y%m%d}_{filtros['hasta']:%Y%m%d}.xlsx"
