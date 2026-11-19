@@ -1863,3 +1863,17 @@ class ClienteYContactosDevolucionSFTests(DevolucionSinFacturaBase):
         self.assertTrue(ContactoSucursal.objects.filter(nombre="Nuevo Contacto").exists())
         r = self.client.get(reverse("admin:core_contactosucursal_changelist"))
         self.assertContains(r, "Nuevo Contacto")
+
+
+class ConsultaRutaSucursalTests(Cambio28Base):
+    """Cambio #31: columna Sucursal en la consulta por ruta y fechas."""
+
+    def test_columna_sucursal(self):
+        self.factura("F-31", sucursal=self.sucursal)
+        u = User.objects.create_user("consulta31", password="x")
+        u.groups.add(Group.objects.get(name="Ventas"))
+        self.client.force_login(u)
+        r = self.client.get(reverse("ventas_ruta"), {"desde": self.hoy.isoformat(), "hasta": self.hoy.isoformat()})
+        self.assertContains(r, "<th>Sucursal</th>", count=1)
+        self.assertContains(r, self.sucursal.nombre)
+        self.assertContains(r, "tabla-compacta")

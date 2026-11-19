@@ -2,6 +2,15 @@
 {% load formato %}
 {% block titulo %}Facturas por ruta{% endblock %}
 {% block contenido %}
+{# Cambio #31: letra más pequeña y pantalla más ancha para que quepan más datos. #}
+<style>
+  .desk { max-width:1440px; }
+  .tabla-compacta table { font-size:11.5px; }
+  .tabla-compacta th { font-size:9.5px; padding:4px 6px; }
+  .tabla-compacta td { padding:4px 6px; line-height:1.25; }
+  .tabla-compacta .detalle { font-size:10.5px; }
+  .tabla-compacta .badge { font-size:10px; padding:1px 6px; }
+</style>
 <form class="filtros" method="get">
   <div>
     <label for="ruta">Ruta</label>
@@ -38,16 +47,17 @@
   <div class="tile"><div class="t">No entregadas</div><div class="n" style="color:var(--danger);">{{ resumen.no_entregadas }}</div><div class="m">Saldo total C$ {{ resumen.saldo|moneda }}</div></div>
 </div>
 
-<div class="seccion">
+<div class="seccion tabla-compacta">
   {% if facturas %}
   <div class="scroll">
     <table>
-      <tr><th>Factura</th><th>Emitida</th><th>Cliente</th><th>Carga / repartidor</th><th>Estado</th><th class="r">Total</th><th class="r">Devuelto</th><th class="r">Saldo</th></tr>
+      <tr><th>Factura</th><th>Emitida</th><th>Cliente</th><th>Sucursal</th><th>Carga / repartidor</th><th>Estado</th><th class="r">Total</th><th class="r">Devuelto</th><th class="r">Saldo</th></tr>
       {% for f in facturas %}
       <tr class="clic">
         <td><a class="fila" href="{% url 'ventas_factura' f.pk %}?volver={{ consulta|urlencode }}">{{ f.numero_factura }}</a></td>
         <td>{{ f.fecha_emision|date:"d/m/Y" }}</td>
         <td>{{ f.cliente.nombre }}{% if f.vendedor %}<div class="detalle">{{ f.vendedor.nombre }}</div>{% endif %}</td>
+        <td>{% if f.sucursal %}{{ f.sucursal.nombre }}{% else %}{{ f.cliente.sucursal|default:"—" }}{% endif %}</td>
         <td>{% if f.carga %}{{ f.carga.codigo_reporte }}<div class="detalle">{{ f.carga.conductor|default:"Sin repartidor" }}{% if not ruta_id and f.carga.ruta %} · {{ f.carga.ruta }}{% endif %}</div>{% else %}<span class="detalle">Sin carga asignada</span>{% endif %}</td>
         <td><span class="badge badge-{{ f.estado_css }}">{{ f.estado_nombre }}</span></td>
         <td class="r">{{ f.total|moneda }}</td>
@@ -63,17 +73,18 @@
 </div>
 
 {# Cambio #28: detalle de las devoluciones de este listado. #}
-<div class="seccion">
+<div class="seccion tabla-compacta">
   <h3 style="margin:0 0 10px;">Detalle de devoluciones{% if total_devoluciones %} ({{ total_devoluciones }} producto{{ total_devoluciones|pluralize }}){% endif %}</h3>
   {% if devoluciones %}
   <div class="scroll">
     <table>
-      <tr><th>Factura / devolución</th><th>Fecha</th><th>Cliente</th><th>Carga</th><th>Producto</th><th>Motivo</th><th>Lote</th><th>Vence</th><th class="r">Cant.</th><th class="r">Valor</th><th>Bodega</th><th>Cartera</th></tr>
+      <tr><th>Factura / devolución</th><th>Fecha</th><th>Cliente</th><th>Sucursal</th><th>Carga</th><th>Producto</th><th>Motivo</th><th>Lote</th><th>Vence</th><th class="r">Cant.</th><th class="r">Valor</th><th>Bodega</th><th>Cartera</th></tr>
       {% for d in devoluciones %}
       <tr>
         <td><b>{{ d.documento }}</b><div class="detalle">{{ d.tipo }}{% if d.doc_devolucion %} · Doc. {{ d.doc_devolucion }}{% endif %}</div></td>
         <td>{{ d.fecha|date:"d/m/Y" }}</td>
-        <td>{{ d.cliente }}{% if d.sucursal %}<div class="detalle">{{ d.sucursal }}</div>{% endif %}{% if d.contacto %}<div class="detalle">Contacto: {{ d.contacto }}</div>{% endif %}</td>
+        <td>{{ d.cliente }}{% if d.contacto %}<div class="detalle">Contacto: {{ d.contacto }}</div>{% endif %}</td>
+        <td>{{ d.sucursal|default:"—" }}</td>
         <td>{{ d.carga|default:"—" }}{% if d.repartidor %}<div class="detalle">{{ d.repartidor }}</div>{% endif %}</td>
         <td>{{ d.producto }}<div class="detalle">{{ d.codigo }}</div></td>
         <td>{{ d.motivo|default:"—" }}{% if d.area %}<div class="detalle">{{ d.area }}</div>{% endif %}</td>
