@@ -1945,3 +1945,21 @@ class RecaudacionCarteraTests(Cambio28Base):
         self.assertEqual(libro.sheetnames, ["Facturas", "Totales"])
         facturas = sorted(f[0] for f in libro["Facturas"].iter_rows(min_row=4, values_only=True))
         self.assertEqual(facturas, ["R33-1", "R33-2"])
+
+
+class AccesoCarteraAdminTests(Cambio28Base):
+    """Cambio #34: acceso a la consulta de cartera desde el inicio del admin."""
+
+    def test_tarjeta_en_el_admin_y_regreso(self):
+        self.client.force_login(self.admin)
+        r = self.client.get(reverse("admin:index"))
+        self.assertContains(r, "Consulta de cartera")
+        self.assertContains(r, reverse("cartera_recaudacion"))
+        self.assertContains(r, reverse("cartera_lista"))
+        r = self.client.get(reverse("cartera_recaudacion"))
+        self.assertContains(r, "Ir al admin")
+
+    def test_sin_permiso_no_ve_la_tarjeta(self):
+        staff = User.objects.create_user("staff34", password="x", is_staff=True)
+        self.client.force_login(staff)
+        self.assertNotContains(self.client.get(reverse("admin:index")), "Consulta de cartera")

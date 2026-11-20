@@ -29,6 +29,7 @@
     <div><h1>Cartera — Revisión de devoluciones</h1><div class="sub">Da por enterado lo que bodega ya recibió</div></div>
     <form class="usuario" method="post" action="{% url 'cartera_salir' %}">
       {% csrf_token %}
+      {% if request.user.is_staff %}<a href="{% url 'admin:index' %}" style="color:#fff;">Ir al admin</a>{% endif %}
       <span>Usuario: {{ request.user.get_username }}</span>
       <button type="submit">Salir</button>
     </form>

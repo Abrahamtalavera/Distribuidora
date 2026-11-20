@@ -50,6 +50,7 @@
     <div><h1>Consulta de cartera</h1><div class="sub">Estimación de recaudación y pagos por ruta</div></div>
     <form class="usuario" method="post" action="{% url 'cartera_salir' %}">
       {% csrf_token %}
+      {% if request.user.is_staff %}<a href="{% url 'admin:index' %}" style="color:#fff;">Ir al admin</a>{% endif %}
       <span>Usuario: {{ request.user.get_username }}</span>
       <button type="submit">Salir</button>
     </form>

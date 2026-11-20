@@ -1,5 +1,5 @@
 {% extends "admin/index.html" %}
-{% comment %}Cambios #19 y #21: accesos directos desde el inicio del admin.{% endcomment %}
+{% comment %}Cambios #19, #21 y #34: accesos directos desde el inicio del admin.{% endcomment %}
 {% block content %}
 {% if perms.core.ver_tablero %}
   <div style="margin:0 0 12px;padding:14px 18px;border:1px solid var(--hairline-color);border-left:4px solid var(--primary);border-radius:6px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
@@ -11,12 +11,24 @@
   </div>
 {% endif %}
 {% if perms.core.consultar_ventas %}
-  <div style="margin:0 0 20px;padding:14px 18px;border:1px solid var(--hairline-color);border-left:4px solid var(--primary);border-radius:6px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+  <div style="margin:0 0 12px;padding:14px 18px;border:1px solid var(--hairline-color);border-left:4px solid var(--primary);border-radius:6px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
     <div>
       <strong style="font-size:15px;">Consulta de ventas</strong>
       <div style="color:var(--body-quiet-color);font-size:13px;margin-top:3px;">Buscar una factura o listar facturas por ruta y fechas.</div>
     </div>
     <a href="{% url 'ventas_buscar' %}" class="button" style="padding:8px 16px;">Abrir consulta</a>
+  </div>
+{% endif %}
+{% if perms.core.revisar_devoluciones_cartera %}
+  <div style="margin:0 0 20px;padding:14px 18px;border:1px solid var(--hairline-color);border-left:4px solid var(--accent);border-radius:6px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+    <div>
+      <strong style="font-size:15px;">Consulta de cartera</strong>
+      <div style="color:var(--body-quiet-color);font-size:13px;margin-top:3px;">Recaudación por ruta (contado y crédito) y revisión de devoluciones.</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <a href="{% url 'cartera_recaudacion' %}" class="button" style="padding:8px 16px;">Recaudación por ruta</a>
+      <a href="{% url 'cartera_lista' %}" class="button" style="padding:8px 16px;">Revisión de devoluciones</a>
+    </div>
   </div>
 {% endif %}
 {{ block.super }}
