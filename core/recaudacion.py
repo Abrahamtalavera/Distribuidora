@@ -34,10 +34,32 @@ NOMBRE_MODALIDAD = {CONTADO: "Contado", CREDITO: "Crédito"}
 ESTADOS_POR_DEFECTO = [e for e in ESTADOS if e != "ANULADA"]
 SIN_RUTA = "Sin ruta"
 
+# Cambio #35: estado de la carga de cada factura (columna y filtro).
+SIN_CARGA = "SIN_CARGA"
+ESTADOS_CARGA = OrderedDict(
+    [
+        ("PLANEADA", ("Planeada", "pendiente")),
+        ("EN_RUTA", ("En ruta", "ruta")),
+        ("RUTA_TERMINADA", ("Ruta terminada", "parcial")),
+        ("CERRADA", ("Cerrada", "completa")),
+        (SIN_CARGA, ("Sin carga", "noentregada")),
+    ]
+)
+
 
 def modalidad_de(factura):
     codigo = (factura.modalidad_pago.codigo or "").upper()
     return CONTADO if codigo == CONTADO else CREDITO
+
+
+def carga_de(factura):
+    """La carga en la que va la factura; si ya no tiene, la de su última visita."""
+    if factura.carga_id:
+        return factura.carga
+    for e in reversed(getattr(factura, "entregas_confirmadas", [])):
+        if e.carga_id:
+            return e.carga
+    return None
 
 
 def ruta_de(factura):
@@ -125,7 +147,7 @@ def _cerrar(bolsa, **extra):
     return bolsa
 
 
-def consulta(desde, hasta, rutas_ids=None, estados=None):
+def consulta(desde, hasta, rutas_ids=None, estados=None, estados_carga=None):
     """
     Devuelve un dict con: facturas (detalle), totales (generales),
     por_estado, por_ruta, anuladas (cuántas se listan sin sumar) y recortado.
@@ -134,6 +156,7 @@ def consulta(desde, hasta, rutas_ids=None, estados=None):
 
     rutas_ids = [r for r in (rutas_ids or []) if r]
     estados = [e for e in (estados or []) if e in ESTADOS] or list(ESTADOS_POR_DEFECTO)
+    estados_carga = [e for e in (estados_carga or []) if e in ESTADOS_CARGA] or list(ESTADOS_CARGA)
 
     qs = (
         _base()
@@ -143,7 +166,7 @@ def consulta(desde, hasta, rutas_ids=None, estados=None):
             Prefetch(
                 "entregas",
                 queryset=Entrega.objects.filter(estado="CONFIRMADA")
-                .select_related("carga__ruta")
+                .select_related("carga__ruta", "carga__conductor")
                 .order_by("fecha_entrega", "id"),
                 to_attr="entregas_confirmadas",
             ),
@@ -159,6 +182,13 @@ def consulta(desde, hasta, rutas_ids=None, estados=None):
     for f in filas:
         anotar(f)
     filas = [f for f in filas if f.estado in estados]
+    for f in filas:
+        carga = carga_de(f)
+        f.carga_estado = carga.estado if carga else SIN_CARGA
+        f.carga_estado_nombre, f.carga_estado_css = ESTADOS_CARGA.get(
+            f.carga_estado, (f.carga_estado, "pendiente")
+        )
+    filas = [f for f in filas if f.carga_estado in estados_carga]
     for f in filas:
         _anotar_cobro(f)
         ruta = ruta_de(f)
@@ -188,6 +218,7 @@ def consulta(desde, hasta, rutas_ids=None, estados=None):
         "anuladas": len(filas) - len(activas),
         "recortado": recortado,
         "estados_elegidos": estados,
+        "estados_carga_elegidos": estados_carga,
         "rutas_elegidas": rutas_ids,
     }
 
@@ -216,7 +247,7 @@ def excel(datos, titulo):
     hoja.append([])
     cols = [
         "Factura", "Emitida", "Cliente", "Vendedor", "Sucursal", "Ruta", "Carga", "Repartidor",
-        "Contado / crédito", "Modalidad", "Estado", "Total", "Devuelto", "Cobrado", "Saldo",
+        "Estado de la carga", "Contado / crédito", "Modalidad", "Estado", "Total", "Devuelto", "Cobrado", "Saldo",
         "Tipo de pago recibido", "Documento asociado",
     ]
     hoja.append(cols)
@@ -233,6 +264,7 @@ def excel(datos, titulo):
                 f.ruta_nombre,
                 carga.codigo_reporte if carga else "",
                 carga.conductor.nombre if carga and carga.conductor_id else "",
+                f.carga_estado_nombre,
                 f.modalidad_cr_nombre,
                 f.modalidad_pago.nombre,
                 f.estado_nombre,
@@ -246,9 +278,9 @@ def excel(datos, titulo):
         )
     for fila in hoja.iter_rows(min_row=4):
         fila[1].number_format = "DD/MM/YYYY"
-        for i in (11, 12, 13, 14):
+        for i in (12, 13, 14, 15):
             fila[i].number_format = "#,##0.00"
-    anchos = [12, 11, 32, 22, 22, 12, 12, 22, 12, 14, 16, 13, 12, 12, 13, 26, 30]
+    anchos = [12, 11, 32, 22, 22, 12, 12, 22, 15, 12, 14, 16, 13, 12, 12, 13, 26, 30]
     for i, ancho in enumerate(anchos, start=1):
         hoja.column_dimensions[get_column_letter(i)].width = ancho
     hoja.freeze_panes = "A4"

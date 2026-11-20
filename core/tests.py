@@ -1963,3 +1963,21 @@ class AccesoCarteraAdminTests(Cambio28Base):
         staff = User.objects.create_user("staff34", password="x", is_staff=True)
         self.client.force_login(staff)
         self.assertNotContains(self.client.get(reverse("admin:index")), "Consulta de cartera")
+
+
+class RecaudacionEstadoCargaTests(RecaudacionCarteraTests):
+    def test_estado_de_la_carga(self):
+        """Cambio #35: columna y filtro por estado de la carga."""
+        from core.recaudacion import consulta
+
+        sin_carga = self.factura("R33-4", total="10.00")
+        Carga.objects.filter(pk=self.f_ruta2.carga_id).update(estado="CERRADA")
+        d = consulta(self.hoy, self.hoy, estados=["EN_RUTA", "POR_ENTREGAR", "SIN_VISITAR", "ENTREGADA"],
+                     estados_carga=["SIN_CARGA"])
+        self.assertEqual([f.numero_factura for f in d["facturas"]], [sin_carga.numero_factura])
+        self.assertEqual(d["facturas"][0].carga_estado_nombre, "Sin carga")
+        self.client.force_login(self.cartera_user)
+        r = self.client.get(reverse("cartera_recaudacion"), {"estado_carga": ["EN_RUTA"]})
+        self.assertContains(r, "Estado de la carga")
+        self.assertContains(r, "R33-1")
+        self.assertNotContains(r, "R33-4")

@@ -69,11 +69,19 @@
       </div>
       <label class="f">Desde<input type="date" name="desde" value="{{ desde|date:'Y-m-d' }}"></label>
       <label class="f">Hasta<input type="date" name="hasta" value="{{ hasta|date:'Y-m-d' }}"></label>
-      <div class="grupo" style="flex:1; min-width:300px;">
+      <div class="grupo" style="flex:2 1 460px;">
         <span>Estado de entrega (uno o varios)</span>
         <div class="chips">
           {% for codigo, nombre in estados_opciones %}
           <label class="chip"><input type="checkbox" name="estado" value="{{ codigo }}" {% if codigo in d.estados_elegidos %}checked{% endif %}>{{ nombre }}</label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="grupo" style="flex:1 1 340px;">
+        <span>Estado de la carga (uno o varios)</span>
+        <div class="chips">
+          {% for codigo, nombre in estados_carga_opciones %}
+          <label class="chip"><input type="checkbox" name="estado_carga" value="{{ codigo }}" {% if codigo in d.estados_carga_elegidos %}checked{% endif %}>{{ nombre }}</label>
           {% endfor %}
         </div>
       </div>
@@ -152,7 +160,7 @@
       {% if d.facturas %}
       <div class="scroll">
         <table>
-          <tr><th>Factura</th><th>Emitida</th><th>Cliente</th><th>Sucursal</th><th>Carga / repartidor</th><th>Contado / crédito</th><th>Estado</th><th class="r">Total</th><th class="r">Devuelto</th><th class="r">Saldo</th><th>Tipo de pago recibido</th><th>Documento asociado</th></tr>
+          <tr><th>Factura</th><th>Emitida</th><th>Cliente</th><th>Sucursal</th><th>Carga / repartidor</th><th>Estado de la carga</th><th>Contado / crédito</th><th>Estado</th><th class="r">Total</th><th class="r">Devuelto</th><th class="r">Saldo</th><th>Tipo de pago recibido</th><th>Documento asociado</th></tr>
           {% for f in d.facturas %}
           <tr>
             <td><b>{{ f.numero_factura }}</b></td>
@@ -160,6 +168,7 @@
             <td>{{ f.cliente.nombre }}{% if f.vendedor %}<div class="detalle">{{ f.vendedor.nombre }}</div>{% endif %}</td>
             <td>{% if f.sucursal %}{{ f.sucursal.nombre }}{% else %}{{ f.cliente.sucursal|default:"—" }}{% endif %}</td>
             <td style="white-space:nowrap;">{% if f.carga %}{{ f.carga.codigo_reporte }}<div class="detalle">{{ f.carga.conductor.nombre|default:"—" }} · {{ f.ruta_nombre }}</div>{% else %}<span class="detalle">Sin carga · {{ f.ruta_nombre }}</span>{% endif %}</td>
+            <td><span class="badge badge-{{ f.carga_estado_css }}">{{ f.carga_estado_nombre }}</span></td>
             <td><span class="mod mod-{{ f.modalidad_cr }}">{{ f.modalidad_cr_nombre }}</span>{% if f.modalidad_cr == "CREDITO" and f.modalidad_pago.codigo != "CREDITO" %}<div class="detalle">{{ f.modalidad_pago.nombre }}</div>{% endif %}</td>
             <td><span class="badge badge-{{ f.estado_css }}">{{ f.estado_nombre }}</span></td>
             <td class="r">{{ f.total|moneda }}</td>

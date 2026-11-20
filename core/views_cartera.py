@@ -161,17 +161,18 @@ def _filtros_recaudacion(request):
         aviso = f"El período se limitó a {MAX_DIAS_LISTADO} días."
     rutas = [int(r) for r in request.GET.getlist("ruta") if r.strip().isdigit()]
     estados = request.GET.getlist("estado")
-    return desde, hasta, rutas, estados, aviso
+    estados_carga = request.GET.getlist("estado_carga")
+    return desde, hasta, rutas, estados, estados_carga, aviso
 
 
 @cartera_required
 def cartera_recaudacion_view(request):
     from core.consulta import ESTADOS
     from core.models import Ruta
-    from core.recaudacion import consulta
+    from core.recaudacion import ESTADOS_CARGA, consulta
 
-    desde, hasta, rutas, estados, aviso = _filtros_recaudacion(request)
-    datos = consulta(desde, hasta, rutas, estados)
+    desde, hasta, rutas, estados, estados_carga, aviso = _filtros_recaudacion(request)
+    datos = consulta(desde, hasta, rutas, estados, estados_carga)
     return render(
         request,
         "core/cartera/recaudacion.html",
@@ -182,6 +183,7 @@ def cartera_recaudacion_view(request):
             "aviso": aviso,
             "rutas": Ruta.objects.order_by("nombre"),
             "estados_opciones": [(c, n) for c, (n, _) in ESTADOS.items()],
+            "estados_carga_opciones": [(c, n) for c, (n, _) in ESTADOS_CARGA.items()],
             "d": datos,
             "consulta": request.GET.urlencode(),
         },
@@ -195,8 +197,8 @@ def cartera_recaudacion_excel_view(request):
     from core.models import Ruta
     from core.recaudacion import consulta, excel
 
-    desde, hasta, rutas, estados, _ = _filtros_recaudacion(request)
-    datos = consulta(desde, hasta, rutas, estados)
+    desde, hasta, rutas, estados, estados_carga, _ = _filtros_recaudacion(request)
+    datos = consulta(desde, hasta, rutas, estados, estados_carga)
     nombres = list(Ruta.objects.filter(pk__in=rutas).order_by("nombre").values_list("nombre", flat=True))
     titulo = (
         f"Recaudación {', '.join(nombres) if nombres else 'todas las rutas'} · "
