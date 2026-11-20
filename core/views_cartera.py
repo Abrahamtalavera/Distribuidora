@@ -132,3 +132,81 @@ def cartera_enterado_view(request, tipo, objeto_id):
     folio = objeto.factura.numero_factura if tipo == "e" else objeto.codigo_reporte
     messages.success(request, f"Devolución de {folio}: recibida por cartera.")
     return redirect(destino)
+
+
+# --- Cambio #33: recaudación por ruta -----------------------------------------
+
+
+def _filtros_recaudacion(request):
+    from datetime import date
+
+    from core.consulta import MAX_DIAS_LISTADO
+    from core.consulta import periodo_por_defecto as periodo_ventas
+
+    desde_def, hasta_def = periodo_ventas()
+
+    def fecha(texto, defecto):
+        try:
+            return date.fromisoformat((texto or "").strip())
+        except ValueError:
+            return defecto
+
+    desde = fecha(request.GET.get("desde"), desde_def)
+    hasta = fecha(request.GET.get("hasta"), hasta_def)
+    if desde > hasta:
+        desde, hasta = hasta, desde
+    aviso = ""
+    if (hasta - desde).days >= MAX_DIAS_LISTADO:
+        desde = hasta.fromordinal(hasta.toordinal() - MAX_DIAS_LISTADO + 1)
+        aviso = f"El período se limitó a {MAX_DIAS_LISTADO} días."
+    rutas = [int(r) for r in request.GET.getlist("ruta") if r.strip().isdigit()]
+    estados = request.GET.getlist("estado")
+    return desde, hasta, rutas, estados, aviso
+
+
+@cartera_required
+def cartera_recaudacion_view(request):
+    from core.consulta import ESTADOS
+    from core.models import Ruta
+    from core.recaudacion import consulta
+
+    desde, hasta, rutas, estados, aviso = _filtros_recaudacion(request)
+    datos = consulta(desde, hasta, rutas, estados)
+    return render(
+        request,
+        "core/cartera/recaudacion.html",
+        {
+            "pestana": "recaudacion",
+            "desde": desde,
+            "hasta": hasta,
+            "aviso": aviso,
+            "rutas": Ruta.objects.order_by("nombre"),
+            "estados_opciones": [(c, n) for c, (n, _) in ESTADOS.items()],
+            "d": datos,
+            "consulta": request.GET.urlencode(),
+        },
+    )
+
+
+@cartera_required
+def cartera_recaudacion_excel_view(request):
+    from django.http import HttpResponse
+
+    from core.models import Ruta
+    from core.recaudacion import consulta, excel
+
+    desde, hasta, rutas, estados, _ = _filtros_recaudacion(request)
+    datos = consulta(desde, hasta, rutas, estados)
+    nombres = list(Ruta.objects.filter(pk__in=rutas).order_by("nombre").values_list("nombre", flat=True))
+    titulo = (
+        f"Recaudación {', '.join(nombres) if nombres else 'todas las rutas'} · "
+        f"{desde:%d/%m/%Y} al {hasta:%d/%m/%Y}"
+    )
+    respuesta = HttpResponse(
+        excel(datos, titulo),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    respuesta["Content-Disposition"] = (
+        f'attachment; filename="recaudacion_{desde:%Y%m%d}_{hasta:%Y%m%d}.xlsx"'
+    )
+    return respuesta

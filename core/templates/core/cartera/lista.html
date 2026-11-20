@@ -33,6 +33,7 @@
       <button type="submit">Salir</button>
     </form>
   </div>
+  {% include "core/cartera/_pestanas.html" %}
   <div class="desk-body">
     {% for message in messages %}
       <div class="aviso {% if message.tags == 'error' %}error{% else %}ok{% endif %}">{{ message }}</div>
