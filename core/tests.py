@@ -1960,6 +1960,7 @@ class CarteraCargasTests(Cambio28Base):
         r = self.client.get(reverse("cartera_cargas"), {"ruta": [self.ruta.id]})
         self.assertContains(r, "Resumen por ruta")
         self.assertContains(r, "Total pagado recibido")
+        self.assertContains(r, "Total pagado recibido C$")
         self.assertContains(r, "C36-2")
         self.assertNotContains(r, "C36-3")
         self.assertContains(r, "Recibo R-601")
@@ -1970,5 +1971,8 @@ class CarteraCargasTests(Cambio28Base):
         self.assertEqual(libro.sheetnames, ["Cargas", "Facturas", "Resumen por ruta"])
         facturas = sorted(f[2] for f in libro["Facturas"].iter_rows(min_row=4, values_only=True))
         self.assertEqual(facturas, ["C36-1", "C36-2"])
+        resumen = list(libro["Resumen por ruta"].iter_rows(min_row=3, values_only=True))
+        self.assertEqual(resumen[0][7], "Total pagado recibido C$")
+        self.assertEqual(resumen[-1][7], 100.0)
         self.assertRedirects(self.client.get("/cartera/recaudacion/"), reverse("cartera_cargas"),
                              fetch_redirect_response=False)

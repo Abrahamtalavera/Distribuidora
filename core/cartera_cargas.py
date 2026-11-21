@@ -276,15 +276,17 @@ def excel(datos, titulo):
     hoja_con(
         libro, "Resumen por ruta",
         ["Ruta", "Contado (cantidad)", "Contado C$", "Crédito (cantidad)", "Crédito C$",
-         "Total cantidad", "Total C$", "Por cobrar C$"],
+         "Total cantidad", "Total C$", "Total pagado recibido C$", "Por cobrar C$"],
         [
             [g["nombre"], g["contado_n"], float(g["contado_monto"]), g["credito_n"],
-             float(g["credito_monto"]), g["total_n"], float(g["total_monto"]), float(g["total_sin"])]
+             float(g["credito_monto"]), g["total_n"], float(g["total_monto"]),
+             float(g["total_cobrado"]), float(g["total_sin"])]
             for g in datos["por_ruta"]
         ]
         + [["Total", tot["contado_n"], float(tot["contado_monto"]), tot["credito_n"],
-            float(tot["credito_monto"]), tot["total_n"], float(tot["total_monto"]), float(tot["total_sin"])]],
-        (2, 4, 6, 7), [16, 12, 14, 12, 14, 12, 14, 14],
+            float(tot["credito_monto"]), tot["total_n"], float(tot["total_monto"]),
+            float(tot["total_cobrado"]), float(tot["total_sin"])]],
+        (2, 4, 6, 7, 8), [16, 12, 14, 12, 14, 12, 14, 16, 14],
     )
     salida = BytesIO()
     libro.save(salida)

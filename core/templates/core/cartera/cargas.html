@@ -142,19 +142,20 @@
       </button>
       <div class="scroll oculto" id="resumenRuta" style="margin-top:10px;">
         <table>
-          <tr><th>Ruta</th><th class="r">Contado (cantidad)</th><th class="r">Contado C$</th><th class="r">Crédito (cantidad)</th><th class="r">Crédito C$</th><th class="r">Total cantidad</th><th class="r">Total C$</th><th class="r">Por cobrar C$</th></tr>
+          <tr><th>Ruta</th><th class="r">Contado (cantidad)</th><th class="r">Contado C$</th><th class="r">Crédito (cantidad)</th><th class="r">Crédito C$</th><th class="r">Total cantidad</th><th class="r">Total C$</th><th class="r">Total pagado recibido C$</th><th class="r">Por cobrar C$</th></tr>
           {% for g in d.por_ruta %}
           <tr>
             <td><b>{{ g.nombre }}</b></td>
             <td class="r">{{ g.contado_n }}</td><td class="r">{{ g.contado_monto|moneda }}</td>
             <td class="r">{{ g.credito_n }}</td><td class="r">{{ g.credito_monto|moneda }}</td>
             <td class="r"><b>{{ g.total_n }}</b></td><td class="r"><b>{{ g.total_monto|moneda }}</b></td>
+            <td class="r pagado">{{ g.total_cobrado|moneda }}</td>
             <td class="r" style="color:var(--danger);font-weight:700;">{{ g.total_sin|moneda }}</td>
           </tr>
           {% empty %}
-          <tr><td colspan="8" class="detalle">Sin facturas con estos filtros.</td></tr>
+          <tr><td colspan="9" class="detalle">Sin facturas con estos filtros.</td></tr>
           {% endfor %}
-          <tr class="tot"><td>Total</td><td class="r">{{ t.contado_n }}</td><td class="r">{{ t.contado_monto|moneda }}</td><td class="r">{{ t.credito_n }}</td><td class="r">{{ t.credito_monto|moneda }}</td><td class="r">{{ t.total_n }}</td><td class="r">{{ t.total_monto|moneda }}</td><td class="r" style="color:var(--danger);">{{ t.total_sin|moneda }}</td></tr>
+          <tr class="tot"><td>Total</td><td class="r">{{ t.contado_n }}</td><td class="r">{{ t.contado_monto|moneda }}</td><td class="r">{{ t.credito_n }}</td><td class="r">{{ t.credito_monto|moneda }}</td><td class="r">{{ t.total_n }}</td><td class="r">{{ t.total_monto|moneda }}</td><td class="r pagado">{{ t.total_cobrado|moneda }}</td><td class="r" style="color:var(--danger);">{{ t.total_sin|moneda }}</td></tr>
         </table>
       </div>
     </div>
