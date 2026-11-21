@@ -23,10 +23,10 @@
   <div style="margin:0 0 20px;padding:14px 18px;border:1px solid var(--hairline-color);border-left:4px solid var(--accent);border-radius:6px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
     <div>
       <strong style="font-size:15px;">Consulta de cartera</strong>
-      <div style="color:var(--body-quiet-color);font-size:13px;margin-top:3px;">Recaudación por ruta (contado y crédito) y revisión de devoluciones.</div>
+      <div style="color:var(--body-quiet-color);font-size:13px;margin-top:3px;">Cargas con lo cobrado y por cobrar (efectivo y crédito) y revisión de devoluciones.</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      <a href="{% url 'cartera_recaudacion' %}" class="button" style="padding:8px 16px;">Recaudación por ruta</a>
+      <a href="{% url 'cartera_cargas' %}" class="button" style="padding:8px 16px;">Consulta de cargas</a>
       <a href="{% url 'cartera_lista' %}" class="button" style="padding:8px 16px;">Revisión de devoluciones</a>
     </div>
   </div>

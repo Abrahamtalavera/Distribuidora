@@ -1,4 +1,4 @@
-{% comment %}Cambio #33: pestañas de la consulta de cartera.{% endcomment %}
+{% comment %}Cambios #33 y #36: pestañas de la consulta de cartera.{% endcomment %}
 <style>
   .pestanas { display:flex; gap:2px; background:var(--primary-dark); padding:0 20px; overflow-x:auto; }
   .pestanas a { color:#D2D4F0; text-decoration:none; font-size:13px; font-weight:600; padding:10px 14px; border-bottom:3px solid transparent; white-space:nowrap; }
@@ -6,6 +6,6 @@
   .pestanas a.activa { color:#fff; border-bottom-color:var(--accent, #E97324); }
 </style>
 <nav class="pestanas">
-  <a href="{% url 'cartera_recaudacion' %}" class="{% if pestana == 'recaudacion' %}activa{% endif %}">Recaudación por ruta</a>
-  <a href="{% url 'cartera_lista' %}" class="{% if pestana != 'recaudacion' %}activa{% endif %}">Revisión de devoluciones</a>
+  <a href="{% url 'cartera_cargas' %}" class="{% if pestana == 'cargas' %}activa{% endif %}">Consulta de cargas</a>
+  <a href="{% url 'cartera_lista' %}" class="{% if pestana != 'cargas' %}activa{% endif %}">Revisión de devoluciones</a>
 </nav>

@@ -75,13 +75,11 @@ urlpatterns = [
     # Cambio #28: revisión de devoluciones por cartera.
     path("cartera/", views_cartera.cartera_lista_view, name="cartera_lista"),
     path("cartera/acceso/", views_cartera.CarteraLoginView.as_view(), name="cartera_acceso"),
-    # Cambio #33: recaudación por ruta.
+    # Cambio #36: consulta de cargas (reemplaza la recaudación por ruta del #33;
+    # la dirección anterior lleva a la nueva).
+    path("cartera/cargas/", views_cartera.cartera_cargas_view, name="cartera_cargas"),
+    path("cartera/cargas/excel/", views_cartera.cartera_cargas_excel_view, name="cartera_cargas_excel"),
     path("cartera/recaudacion/", views_cartera.cartera_recaudacion_view, name="cartera_recaudacion"),
-    path(
-        "cartera/recaudacion/excel/",
-        views_cartera.cartera_recaudacion_excel_view,
-        name="cartera_recaudacion_excel",
-    ),
     path("cartera/salir/", views_cartera.cartera_salir_view, name="cartera_salir"),
     path(
         "cartera/enterado/<str:tipo>/<int:objeto_id>/",

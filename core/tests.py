@@ -1879,74 +1879,6 @@ class ConsultaRutaSucursalTests(Cambio28Base):
         self.assertContains(r, "tabla-compacta")
 
 
-class RecaudacionCarteraTests(Cambio28Base):
-    """Cambio #33: consulta de cartera "Recaudación por ruta"."""
-
-    def setUp(self):
-        super().setUp()
-        self.ruta2 = Ruta.objects.create(nombre="Ruta Sur 33")
-        c1 = Carga.objects.create(estado="EN_RUTA", ruta=self.ruta, conductor=self.repartidor)
-        c2 = Carga.objects.create(estado="EN_RUTA", ruta=self.ruta2, conductor=self.repartidor)
-        self.f_contado = self.factura("R33-1", total="100.00", carga=c1)
-        self.f_credito = self.factura("R33-2", total="250.00", carga=c1, modalidad_pago=self.credito,
-                                      fecha_vencimiento=self.hoy + timedelta(days=30))
-        self.f_ruta2 = self.factura("R33-3", total="40.00", carga=c2)
-        cartera = CarteraCobro.objects.create(
-            factura=self.f_contado, modalidad_pago=self.contado, monto_total=Decimal("100"),
-            saldo_pendiente=Decimal("0"),
-        )
-        Pago.objects.create(cartera=cartera, monto=Decimal("60"), forma_pago="EFECTIVO", numero_recibo="R-501")
-        Pago.objects.create(cartera=cartera, monto=Decimal("40"), forma_pago="TRANSFERENCIA", referencia="BAC-77")
-
-    def test_totales_contado_credito_por_ruta(self):
-        from core.recaudacion import consulta
-
-        d = consulta(self.hoy, self.hoy)
-        t = d["totales"]
-        self.assertEqual((t["contado_n"], t["credito_n"], t["total_n"]), (2, 1, 3))
-        self.assertEqual(t["contado_monto"], Decimal("140.00"))
-        self.assertEqual(t["credito_monto"], Decimal("250.00"))
-        self.assertEqual(t["contado_cobrado"], Decimal("100.00"))
-        rutas = {g["nombre"]: g for g in d["por_ruta"]}
-        self.assertEqual(rutas[self.ruta.nombre]["total_n"], 2)
-        self.assertEqual(rutas["Ruta Sur 33"]["contado_monto"], Decimal("40.00"))
-        estados = {g["codigo"]: g for g in d["por_estado"]}
-        self.assertEqual(estados["EN_RUTA"]["total_n"], 3)
-        fila = next(f for f in d["facturas"] if f.numero_factura == "R33-1")
-        self.assertEqual(fila.tipos_pago, "Efectivo + Transferencia")
-        self.assertEqual(fila.documentos, "Recibo R-501 · Ref. BAC-77")
-        cred = next(f for f in d["facturas"] if f.numero_factura == "R33-2")
-        self.assertTrue(cred.documento_nota.startswith("Vence "))
-
-    def test_filtros_varias_rutas_y_estados(self):
-        from core.recaudacion import consulta
-
-        d = consulta(self.hoy, self.hoy, [self.ruta2.id], ["EN_RUTA"])
-        self.assertEqual([f.numero_factura for f in d["facturas"]], ["R33-3"])
-        d = consulta(self.hoy, self.hoy, [self.ruta.id, self.ruta2.id], ["ENTREGADA"])
-        self.assertEqual(d["facturas"], [])
-
-    def test_pantalla_y_excel(self):
-        from io import BytesIO
-
-        from openpyxl import load_workbook
-
-        self.client.force_login(self.bodega_user)
-        self.assertEqual(self.client.get(reverse("cartera_recaudacion")).status_code, 403)
-        self.client.force_login(self.cartera_user)
-        url = reverse("cartera_recaudacion")
-        r = self.client.get(url, {"ruta": [self.ruta.id], "estado": ["EN_RUTA", "ENTREGADA"]})
-        self.assertContains(r, "Totales por ruta")
-        self.assertContains(r, "R33-2")
-        self.assertNotContains(r, "R33-3")
-        self.assertContains(r, "Recibo R-501")
-        r = self.client.get(reverse("cartera_recaudacion_excel"), {"ruta": [self.ruta.id]})
-        libro = load_workbook(BytesIO(r.content))
-        self.assertEqual(libro.sheetnames, ["Facturas", "Totales"])
-        facturas = sorted(f[0] for f in libro["Facturas"].iter_rows(min_row=4, values_only=True))
-        self.assertEqual(facturas, ["R33-1", "R33-2"])
-
-
 class AccesoCarteraAdminTests(Cambio28Base):
     """Cambio #34: acceso a la consulta de cartera desde el inicio del admin."""
 
@@ -1954,9 +1886,9 @@ class AccesoCarteraAdminTests(Cambio28Base):
         self.client.force_login(self.admin)
         r = self.client.get(reverse("admin:index"))
         self.assertContains(r, "Consulta de cartera")
-        self.assertContains(r, reverse("cartera_recaudacion"))
+        self.assertContains(r, reverse("cartera_cargas"))
         self.assertContains(r, reverse("cartera_lista"))
-        r = self.client.get(reverse("cartera_recaudacion"))
+        r = self.client.get(reverse("cartera_cargas"))
         self.assertContains(r, "Ir al admin")
 
     def test_sin_permiso_no_ve_la_tarjeta(self):
@@ -1965,19 +1897,78 @@ class AccesoCarteraAdminTests(Cambio28Base):
         self.assertNotContains(self.client.get(reverse("admin:index")), "Consulta de cartera")
 
 
-class RecaudacionEstadoCargaTests(RecaudacionCarteraTests):
-    def test_estado_de_la_carga(self):
-        """Cambio #35: columna y filtro por estado de la carga."""
-        from core.recaudacion import consulta
+class CarteraCargasTests(Cambio28Base):
+    """Cambio #36: consulta de cargas para cartera (reemplaza la recaudación por ruta)."""
 
-        sin_carga = self.factura("R33-4", total="10.00")
-        Carga.objects.filter(pk=self.f_ruta2.carga_id).update(estado="CERRADA")
-        d = consulta(self.hoy, self.hoy, estados=["EN_RUTA", "POR_ENTREGAR", "SIN_VISITAR", "ENTREGADA"],
-                     estados_carga=["SIN_CARGA"])
-        self.assertEqual([f.numero_factura for f in d["facturas"]], [sin_carga.numero_factura])
-        self.assertEqual(d["facturas"][0].carga_estado_nombre, "Sin carga")
+    def setUp(self):
+        super().setUp()
+        from core.cierre import calcular_resultado  # noqa: F401  (misma lógica que el tablero)
+
+        self.ruta2 = Ruta.objects.create(nombre="Ruta Sur 36")
+        self.c1 = Carga.objects.create(estado="EN_RUTA", ruta=self.ruta, conductor=self.repartidor,
+                                       fecha_planeada=self.hoy)
+        self.c2 = Carga.objects.create(estado="CERRADA", ruta=self.ruta2, conductor=self.repartidor,
+                                       fecha_planeada=self.hoy)
+        self.f1 = self.factura("C36-1", total="100.00", carga=self.c1, cargada_en=timezone.now())
+        self.f2 = self.factura("C36-2", total="250.00", carga=self.c1, cargada_en=timezone.now(),
+                               modalidad_pago=self.credito, fecha_vencimiento=self.hoy + timedelta(days=30))
+        self.f3 = self.factura("C36-3", total="40.00", carga=self.c2, cargada_en=timezone.now())
+        cartera = CarteraCobro.objects.create(
+            factura=self.f1, modalidad_pago=self.contado, monto_total=Decimal("100"),
+            saldo_pendiente=Decimal("0"),
+        )
+        Pago.objects.create(cartera=cartera, monto=Decimal("60"), forma_pago="EFECTIVO", numero_recibo="R-601")
+        Pago.objects.create(cartera=cartera, monto=Decimal("40"), forma_pago="TRANSFERENCIA", referencia="BAC-88")
+
+    def test_sumas_cargas_y_detalle(self):
+        from core.cartera_cargas import consulta
+
+        d = consulta(self.hoy, self.hoy)
+        t = d["totales"]
+        self.assertEqual(t["cargas"], 2)
+        self.assertEqual((t["total_n"], t["contado_n"], t["credito_n"]), (3, 2, 1))
+        self.assertEqual(t["total_monto"], Decimal("390.00"))
+        self.assertEqual(t["contado_cobrado"], Decimal("100.00"))
+        self.assertEqual(t["credito_sin"], Decimal("250.00"))
+        self.assertEqual(t["sin_visitar"], 3)
+        c1 = next(c for c in d["cargas"] if c.pk == self.c1.pk)
+        self.assertEqual((c1.total_facturas, c1.total_efectivo, c1.total_credito, c1.total_pagado),
+                         (2, Decimal("100.00"), Decimal("250.00"), Decimal("100.00")))
+        f1 = next(f for f in c1.detalle_facturas if f["numero_factura"] == "C36-1")
+        self.assertEqual(f1["documento"], "Recibo R-601 (efectivo) · Ref. BAC-88 (transferencia)")
+        f2 = next(f for f in c1.detalle_facturas if f["numero_factura"] == "C36-2")
+        self.assertTrue(f2["documento"].startswith("Vence "))
+        rutas = {g["nombre"]: g for g in d["por_ruta"]}
+        self.assertEqual(rutas["Ruta Sur 36"]["contado_monto"], Decimal("40.00"))
+
+    def test_filtros_varias_rutas_y_estados(self):
+        from core.cartera_cargas import consulta
+
+        d = consulta(self.hoy, self.hoy, [self.ruta2.id], ["CERRADA"])
+        self.assertEqual([c.pk for c in d["cargas"]], [self.c2.pk])
+        d = consulta(self.hoy, self.hoy, [self.ruta.id, self.ruta2.id], ["PLANEADA"])
+        self.assertEqual(d["cargas"], [])
+
+    def test_pantalla_excel_y_direccion_anterior(self):
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        self.client.force_login(self.bodega_user)
+        self.assertEqual(self.client.get(reverse("cartera_cargas")).status_code, 403)
         self.client.force_login(self.cartera_user)
-        r = self.client.get(reverse("cartera_recaudacion"), {"estado_carga": ["EN_RUTA"]})
-        self.assertContains(r, "Estado de la carga")
-        self.assertContains(r, "R33-1")
-        self.assertNotContains(r, "R33-4")
+        r = self.client.get(reverse("cartera_cargas"), {"ruta": [self.ruta.id]})
+        self.assertContains(r, "Resumen por ruta")
+        self.assertContains(r, "Total pagado recibido")
+        self.assertContains(r, "C36-2")
+        self.assertNotContains(r, "C36-3")
+        self.assertContains(r, "Recibo R-601")
+        self.assertContains(r, "Consulta de cargas")
+        self.assertNotContains(r, "Recaudación por ruta")
+        r = self.client.get(reverse("cartera_cargas_excel"), {"ruta": [self.ruta.id]})
+        libro = load_workbook(BytesIO(r.content))
+        self.assertEqual(libro.sheetnames, ["Cargas", "Facturas", "Resumen por ruta"])
+        facturas = sorted(f[2] for f in libro["Facturas"].iter_rows(min_row=4, values_only=True))
+        self.assertEqual(facturas, ["C36-1", "C36-2"])
+        self.assertRedirects(self.client.get("/cartera/recaudacion/"), reverse("cartera_cargas"),
+                             fetch_redirect_response=False)

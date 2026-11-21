@@ -1,0 +1,260 @@
+{% extends "core/bodega/base.html" %}
+{% load formato %}
+{% block titulo %}Cartera — consulta de cargas{% endblock %}
+{% block estilos %}
+<style>
+  /* Cambio #36: consulta de cargas para cartera */
+  .desk { max-width:1440px; }
+  .filtros { display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end; padding:12px 14px; border:1px solid var(--border); border-radius:10px; background:#FAFAFC; margin-bottom:14px; }
+  .filtros .grupo { display:flex; flex-direction:column; gap:5px; }
+  .filtros .grupo > span, .filtros label.f { font-size:11px; color:var(--muted); text-transform:uppercase; }
+  .filtros label.f { display:flex; flex-direction:column; gap:5px; }
+  .filtros input[type=date] { padding:8px; border:1px solid #C9C9D6; border-radius:6px; font-family:inherit; font-size:13px; }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; }
+  .chip { position:relative; display:inline-flex; align-items:center; min-height:34px; padding:0 12px; border-radius:17px; border:1px solid #C9C9D6; background:#fff; font-size:12.5px; cursor:pointer; user-select:none; }
+  .chip input { position:absolute; opacity:0; width:1px; height:1px; }
+  .chip:has(input:checked) { background:var(--primary); border-color:var(--primary); color:#fff; font-weight:600; }
+  .chip:has(input:focus-visible) { outline:2px solid var(--accent); outline-offset:1px; }
+  .botones { display:flex; gap:8px; }
+  .btn-consultar { background:var(--primary); color:#fff; border:0; border-radius:6px; padding:0 22px; min-height:42px; font-family:inherit; font-size:14px; font-weight:700; cursor:pointer; }
+  .btn-claro { background:#fff; color:var(--primary); border:1px solid var(--primary); padding:0 16px; min-height:42px; border-radius:6px; font-size:14px; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; }
+  .tiles { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:10px; margin-bottom:14px; }
+  @media (max-width: 820px) { .tiles { grid-template-columns:1fr; } }
+  .tile { border:1px solid var(--border); border-radius:10px; padding:12px 14px; background:#fff; }
+  .tile.contado { border-top:4px solid var(--accent); }
+  .tile.credito { border-top:4px solid var(--primary); }
+  .tile .t { font-size:12px; color:var(--muted); text-transform:uppercase; }
+  .tile .n { font-family:var(--sm-titulos, inherit); font-size:28px; font-weight:700; line-height:1.2; color:var(--primary); }
+  .tile.contado .n { color:#B5531A; }
+  .tile .n small { font-size:15px; color:var(--text); }
+  .tile .m { font-size:12px; color:var(--muted); }
+  .tile .m b { color:var(--danger); }
+  .compacta table { font-size:11.5px; }
+  .compacta th { font-size:9.5px; padding:5px 6px; vertical-align:bottom; }
+  .compacta td { padding:5px 6px; line-height:1.25; }
+  .compacta .badge { font-size:10px; padding:2px 7px; }
+  tr.tot td { background:#F7F8FD; font-weight:700; }
+  .resumen-toggle { display:flex; align-items:center; gap:10px; width:100%; border:0; background:none; padding:0; cursor:pointer; font-family:inherit; text-align:left; }
+  .resumen-toggle h3 { margin:0; }
+  .resumen-toggle .ver { margin-left:auto; font-size:12.5px; font-weight:600; color:var(--primary); border:1px solid var(--primary); border-radius:6px; padding:5px 12px; }
+  .badge-parcial { background:var(--warn-bg); color:#8A3F0E; }
+  .badge-ruta { background:var(--accent-light); color:var(--primary); }
+  .badge-terminada { background:#ECEDF7; color:#2C318C; }
+  .mod { display:inline-block; font-size:10px; font-weight:700; padding:2px 7px; border-radius:9px; white-space:nowrap; }
+  .mod-CONTADO { background:#FDEEE3; color:#8A3F0E; }
+  .mod-CREDITO { background:#ECEDF7; color:#2C318C; }
+  tbody tr.carga-row, tr.carga-row { cursor:pointer; }
+  tr.carga-row:hover td { background:#F7F8FD; }
+  .id-link { display:flex; align-items:center; gap:6px; font-weight:700; color:var(--primary); white-space:nowrap; }
+  .id-link .car { display:inline-block; transition:transform .15s; font-size:10px; color:var(--muted); }
+  .carga-row.expanded .car { transform:rotate(90deg); }
+  .sub-row td { padding:0; background:#F7F8FD; }
+  .sub-wrap { padding:10px 14px 14px 32px; }
+  .sub-wrap h5 { margin:0 0 6px; font-size:11px; text-transform:uppercase; color:var(--primary); }
+  .sub-table { width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--border); }
+  .sub-table th { font-size:9.5px; text-transform:uppercase; color:var(--muted); background:#F1F1F6; padding:5px 8px; text-align:left; }
+  .sub-table td { font-size:11px; padding:5px 8px; border-top:1px solid #EFEFF4; }
+  .sub-table .r { text-align:right; white-space:nowrap; }
+  .pagado { color:var(--ok); font-weight:700; }
+  .oculto { display:none; }
+</style>
+{% endblock %}
+{% block cuerpo %}
+<div class="desk">
+  <div class="desk-head">
+    <div><h1>Consulta de cartera</h1><div class="sub">Cargas por fecha, ruta y estado, con lo cobrado y por cobrar</div></div>
+    <form class="usuario" method="post" action="{% url 'cartera_salir' %}">
+      {% csrf_token %}
+      {% if request.user.is_staff %}<a href="{% url 'admin:index' %}" style="color:#fff;">Ir al admin</a>{% endif %}
+      <span>Usuario: {{ request.user.get_username }}</span>
+      <button type="submit">Salir</button>
+    </form>
+  </div>
+  {% include "core/cartera/_pestanas.html" %}
+  <div class="desk-body">
+
+    <form class="filtros" method="get">
+      <label class="f">Fecha planeada desde<input type="date" name="desde" value="{{ desde|date:'Y-m-d' }}"></label>
+      <label class="f">Hasta<input type="date" name="hasta" value="{{ hasta|date:'Y-m-d' }}"></label>
+      <div class="grupo" style="flex:1 1 260px;">
+        <span>Rutas (ninguna marcada = todas)</span>
+        <div class="chips">
+          {% for r in rutas %}
+          <label class="chip"><input type="checkbox" name="ruta" value="{{ r.pk }}" {% if r.pk in d.rutas_elegidas %}checked{% endif %}>{{ r.nombre }}</label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="grupo" style="flex:1 1 360px;">
+        <span>Estado de la ruta (ninguno marcado = todos)</span>
+        <div class="chips">
+          {% for codigo, nombre in estados_opciones %}
+          <label class="chip"><input type="checkbox" name="estado" value="{{ codigo }}" {% if codigo in d.estados_elegidos %}checked{% endif %}>{{ nombre }}</label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="botones">
+        <button class="btn-consultar" type="submit">Buscar</button>
+        <a class="btn-claro" href="{% url 'cartera_cargas' %}">Limpiar</a>
+      </div>
+    </form>
+
+    {% if aviso %}<div class="aviso warn">{{ aviso }}</div>{% endif %}
+    {% if d.recortado %}<div class="aviso warn">Hay más de {{ max_cargas }} cargas con estos filtros: se muestran las más recientes. Acorta las fechas.</div>{% endif %}
+
+    {% with t=d.totales %}
+    <div class="tiles">
+      <div class="tile">
+        <div class="t">Facturas · {{ t.cargas }} carga{{ t.cargas|pluralize }}</div>
+        <div class="n">{{ t.total_n }} <small>· C$ {{ t.total_monto|moneda }}</small></div>
+        <div class="m">Cobrado C$ {{ t.total_cobrado|moneda }} · sin cobrar <b>C$ {{ t.total_sin|moneda }}</b></div>
+      </div>
+      <div class="tile contado">
+        <div class="t">Efectivo (contado)</div>
+        <div class="n">{{ t.contado_n }} <small>· C$ {{ t.contado_monto|moneda }}</small></div>
+        <div class="m">Cobrado C$ {{ t.contado_cobrado|moneda }} · sin cobrar <b>C$ {{ t.contado_sin|moneda }}</b></div>
+      </div>
+      <div class="tile credito">
+        <div class="t">Crédito</div>
+        <div class="n">{{ t.credito_n }} <small>· C$ {{ t.credito_monto|moneda }}</small></div>
+        <div class="m">Cobrado C$ {{ t.credito_cobrado|moneda }} · sin cobrar <b>C$ {{ t.credito_sin|moneda }}</b></div>
+      </div>
+      <div class="tile">
+        <div class="t">Con devolución</div>
+        <div class="n" style="color:#AE4627;">{{ t.devolucion }}</div>
+        <div class="m">factura{{ t.devolucion|pluralize }}</div>
+      </div>
+      <div class="tile">
+        <div class="t">No entregadas</div>
+        <div class="n" style="color:var(--danger);">{{ t.no_entregada }}</div>
+        <div class="m">factura{{ t.no_entregada|pluralize }}</div>
+      </div>
+      <div class="tile">
+        <div class="t">Sin visitar</div>
+        <div class="n" style="color:var(--muted);">{{ t.sin_visitar }}</div>
+        <div class="m">factura{{ t.sin_visitar|pluralize }}</div>
+      </div>
+    </div>
+
+    <div class="seccion compacta">
+      <button type="button" class="resumen-toggle" id="btnResumen" aria-expanded="false" aria-controls="resumenRuta">
+        <h3><span id="flechaResumen">&#9656;</span> Resumen por ruta</h3>
+        <span class="ver" id="textoResumen">Ver resumen</span>
+      </button>
+      <div class="scroll oculto" id="resumenRuta" style="margin-top:10px;">
+        <table>
+          <tr><th>Ruta</th><th class="r">Contado (cantidad)</th><th class="r">Contado C$</th><th class="r">Crédito (cantidad)</th><th class="r">Crédito C$</th><th class="r">Total cantidad</th><th class="r">Total C$</th><th class="r">Por cobrar C$</th></tr>
+          {% for g in d.por_ruta %}
+          <tr>
+            <td><b>{{ g.nombre }}</b></td>
+            <td class="r">{{ g.contado_n }}</td><td class="r">{{ g.contado_monto|moneda }}</td>
+            <td class="r">{{ g.credito_n }}</td><td class="r">{{ g.credito_monto|moneda }}</td>
+            <td class="r"><b>{{ g.total_n }}</b></td><td class="r"><b>{{ g.total_monto|moneda }}</b></td>
+            <td class="r" style="color:var(--danger);font-weight:700;">{{ g.total_sin|moneda }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8" class="detalle">Sin facturas con estos filtros.</td></tr>
+          {% endfor %}
+          <tr class="tot"><td>Total</td><td class="r">{{ t.contado_n }}</td><td class="r">{{ t.contado_monto|moneda }}</td><td class="r">{{ t.credito_n }}</td><td class="r">{{ t.credito_monto|moneda }}</td><td class="r">{{ t.total_n }}</td><td class="r">{{ t.total_monto|moneda }}</td><td class="r" style="color:var(--danger);">{{ t.total_sin|moneda }}</td></tr>
+        </table>
+      </div>
+    </div>
+    {% endwith %}
+
+    <div class="seccion compacta">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+        <h3 style="margin:0;">Cargas ({{ d.cargas|length }})</h3>
+        {% if d.cargas %}<a class="btn-claro" style="min-height:34px;font-size:13px;" href="{% url 'cartera_cargas_excel' %}?{{ consulta }}">Descargar en Excel</a>{% endif %}
+      </div>
+      {% if d.cargas %}
+      <div class="scroll">
+        <table>
+          <tr>
+            <th>ID de carga</th><th>Fecha planeada</th><th>Ruta</th><th>Conductor</th><th>Estado de la ruta</th>
+            <th class="r">Total facturas</th><th class="r">Completa</th><th class="r">Con devolución</th><th class="r">No entregada</th>
+            <th class="r">Monto total</th><th class="r">Total en efectivo</th><th class="r">Total en crédito</th><th class="r">Total pagado recibido</th><th class="r">% avance</th>
+          </tr>
+          {% for c in d.cargas %}
+          <tr class="carga-row" data-target="sub-{{ c.pk }}" tabindex="0" aria-expanded="false">
+            <td><span class="id-link"><span class="car">&#9656;</span>{{ c.codigo_reporte }}</span></td>
+            <td>{{ c.fecha_planeada|date:"d/m/Y" }}</td>
+            <td>{{ c.ruta|default:"—" }}</td>
+            <td>{{ c.conductor|default:"—" }}</td>
+            <td><span class="badge {% if c.estado == 'PLANEADA' %}badge-pendiente{% elif c.estado == 'EN_RUTA' %}badge-ruta{% elif c.estado == 'RUTA_TERMINADA' %}badge-terminada{% else %}badge-completa{% endif %}">{{ c.get_estado_display }}</span></td>
+            <td class="r">{{ c.total_facturas }}</td>
+            <td class="r" style="color:var(--ok);font-weight:700;">{{ c.completa }}</td>
+            <td class="r" style="color:#AE4627;font-weight:700;">{{ c.devolucion }}</td>
+            <td class="r" style="color:var(--danger);font-weight:700;">{{ c.no_entregada }}</td>
+            <td class="r"><b>C$ {{ c.monto|moneda }}</b></td>
+            <td class="r">C$ {{ c.total_efectivo|moneda }}</td>
+            <td class="r">C$ {{ c.total_credito|moneda }}</td>
+            <td class="r pagado">C$ {{ c.total_pagado|moneda }}</td>
+            <td class="r"><b>{% if c.avance is not None %}{{ c.avance }}%{% else %}—{% endif %}</b></td>
+          </tr>
+          <tr class="sub-row oculto" id="sub-{{ c.pk }}">
+            <td colspan="14">
+              <div class="sub-wrap">
+                <h5>Facturas de {{ c.codigo_reporte }}</h5>
+                {% if c.detalle_facturas %}
+                <table class="sub-table">
+                  <tr><th>No. factura</th><th>Código cliente</th><th>Nombre cliente</th><th>Estado de factura</th><th>Contado o crédito</th><th class="r">Monto de factura</th><th class="r">Monto pagado</th><th>Documento asociado al pago</th></tr>
+                  {% for f in c.detalle_facturas %}
+                  <tr>
+                    <td><b>{{ f.numero_factura }}</b></td>
+                    <td>{{ f.cliente_codigo }}</td>
+                    <td>{{ f.cliente_nombre }}</td>
+                    <td><span class="badge badge-{{ f.css }}">{{ f.estado_nombre }}</span></td>
+                    <td><span class="mod mod-{{ f.modalidad }}">{{ f.modalidad_nombre }}</span></td>
+                    <td class="r">C$ {{ f.monto|moneda }}</td>
+                    <td class="r {% if f.con_pago %}pagado{% endif %}">C$ {{ f.pagado|moneda }}</td>
+                    <td>{{ f.documento }}</td>
+                  </tr>
+                  {% endfor %}
+                </table>
+                {% else %}
+                <div class="detalle">Esta carga no tiene facturas activas.</div>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+      {% else %}
+        <div class="detalle" style="padding:12px 4px; text-align:center;">No hay cargas con estos filtros.</div>
+      {% endif %}
+      <div class="detalle" style="margin-top:8px;">Fechas por fecha planeada de la carga. Toca una carga para ver sus facturas. "Efectivo" = facturas de contado; "Crédito" incluye crédito y consignación. Sin cobrar / por cobrar = saldo pendiente de cada factura.</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  function alternar(fila) {
+    var sub = document.getElementById(fila.dataset.target);
+    if (!sub) return;
+    var abierta = !sub.classList.contains('oculto');
+    sub.classList.toggle('oculto', abierta);
+    fila.classList.toggle('expanded', !abierta);
+    fila.setAttribute('aria-expanded', String(!abierta));
+  }
+  document.querySelectorAll('.carga-row').forEach(function (fila) {
+    fila.addEventListener('click', function () { alternar(fila); });
+    fila.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); alternar(fila); }
+    });
+  });
+  var btn = document.getElementById('btnResumen');
+  var caja = document.getElementById('resumenRuta');
+  if (btn && caja) {
+    btn.addEventListener('click', function () {
+      var abierto = caja.classList.toggle('oculto') === false;
+      btn.setAttribute('aria-expanded', String(abierto));
+      document.getElementById('flechaResumen').innerHTML = abierto ? '&#9662;' : '&#9656;';
+      document.getElementById('textoResumen').textContent = abierto ? 'Ocultar' : 'Ver resumen';
+    });
+  }
+})();
+</script>
+{% endblock %}

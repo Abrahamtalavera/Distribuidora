@@ -134,16 +134,16 @@ def cartera_enterado_view(request, tipo, objeto_id):
     return redirect(destino)
 
 
-# --- Cambio #33: recaudación por ruta -----------------------------------------
+# --- Cambio #36: consulta de cargas (reemplaza la recaudación por ruta, #33) --
 
 
-def _filtros_recaudacion(request):
+def _filtros_cargas(request):
     from datetime import date
 
-    from core.consulta import MAX_DIAS_LISTADO
-    from core.consulta import periodo_por_defecto as periodo_ventas
+    from core.consulta_cargas import MAX_DIAS_LISTADO
+    from core.consulta_cargas import periodo_por_defecto as periodo_cargas
 
-    desde_def, hasta_def = periodo_ventas()
+    desde_def, hasta_def = periodo_cargas()
 
     def fecha(texto, defecto):
         try:
@@ -161,54 +161,58 @@ def _filtros_recaudacion(request):
         aviso = f"El período se limitó a {MAX_DIAS_LISTADO} días."
     rutas = [int(r) for r in request.GET.getlist("ruta") if r.strip().isdigit()]
     estados = request.GET.getlist("estado")
-    estados_carga = request.GET.getlist("estado_carga")
-    return desde, hasta, rutas, estados, estados_carga, aviso
+    return desde, hasta, rutas, estados, aviso
 
 
 @cartera_required
-def cartera_recaudacion_view(request):
-    from core.consulta import ESTADOS
-    from core.models import Ruta
-    from core.recaudacion import ESTADOS_CARGA, consulta
+def cartera_cargas_view(request):
+    from core.cartera_cargas import consulta
+    from core.consulta_cargas import MAX_CARGAS_LISTADO
+    from core.models import Carga, Ruta
 
-    desde, hasta, rutas, estados, estados_carga, aviso = _filtros_recaudacion(request)
-    datos = consulta(desde, hasta, rutas, estados, estados_carga)
+    desde, hasta, rutas, estados, aviso = _filtros_cargas(request)
+    datos = consulta(desde, hasta, rutas, estados)
     return render(
         request,
-        "core/cartera/recaudacion.html",
+        "core/cartera/cargas.html",
         {
-            "pestana": "recaudacion",
+            "pestana": "cargas",
             "desde": desde,
             "hasta": hasta,
             "aviso": aviso,
             "rutas": Ruta.objects.order_by("nombre"),
-            "estados_opciones": [(c, n) for c, (n, _) in ESTADOS.items()],
-            "estados_carga_opciones": [(c, n) for c, (n, _) in ESTADOS_CARGA.items()],
+            "estados_opciones": Carga.ESTADO_CHOICES,
             "d": datos,
+            "max_cargas": MAX_CARGAS_LISTADO,
             "consulta": request.GET.urlencode(),
         },
     )
 
 
 @cartera_required
-def cartera_recaudacion_excel_view(request):
+def cartera_cargas_excel_view(request):
     from django.http import HttpResponse
 
+    from core.cartera_cargas import consulta, excel
     from core.models import Ruta
-    from core.recaudacion import consulta, excel
 
-    desde, hasta, rutas, estados, estados_carga, _ = _filtros_recaudacion(request)
-    datos = consulta(desde, hasta, rutas, estados, estados_carga)
+    desde, hasta, rutas, estados, _ = _filtros_cargas(request)
+    datos = consulta(desde, hasta, rutas, estados)
     nombres = list(Ruta.objects.filter(pk__in=rutas).order_by("nombre").values_list("nombre", flat=True))
     titulo = (
-        f"Recaudación {', '.join(nombres) if nombres else 'todas las rutas'} · "
-        f"{desde:%d/%m/%Y} al {hasta:%d/%m/%Y}"
+        f"Cargas {', '.join(nombres) if nombres else 'todas las rutas'} · "
+        f"fecha planeada {desde:%d/%m/%Y} al {hasta:%d/%m/%Y}"
     )
     respuesta = HttpResponse(
         excel(datos, titulo),
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     respuesta["Content-Disposition"] = (
-        f'attachment; filename="recaudacion_{desde:%Y%m%d}_{hasta:%Y%m%d}.xlsx"'
+        f'attachment; filename="cargas_cartera_{desde:%Y%m%d}_{hasta:%Y%m%d}.xlsx"'
     )
     return respuesta
+
+
+def cartera_recaudacion_view(request):
+    """La "Recaudación por ruta" (Cambio #33) se reemplazó por la consulta de cargas."""
+    return redirect("cartera_cargas")
