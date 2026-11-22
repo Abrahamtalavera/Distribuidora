@@ -2115,3 +2115,31 @@ class GuardarImpresionTests(CarteraTests):
         r = self._post(url, clave, "-5")
         self.assertContains(r, "no es válido")
         self.assertFalse(DatosImpresionDevolucion.objects.exists())
+
+
+class FiltrosRevisionDevolucionesTests(Cambio28Base):
+    """Cambio #38: tipo (con / sin factura / ambas) y búsqueda por cliente o sucursal."""
+
+    def test_filtra_por_tipo_y_texto(self):
+        from core.cartera import devoluciones_para_cartera
+
+        self.entrega_con_devolucion()  # con factura
+        sf = self.crear_devolucion(estado="RECOLECTADA", recolectada_en=timezone.now())
+        todas = devoluciones_para_cartera("todas")[0]
+        self.assertEqual({i["tipo"] for i in todas}, {"e", "sf"})
+        self.assertEqual({i["tipo"] for i in devoluciones_para_cartera("todas", tipo="e")[0]}, {"e"})
+        self.assertEqual([i["id"] for i in devoluciones_para_cartera("todas", tipo="sf")[0]], [sf.id])
+        self.assertEqual(devoluciones_para_cartera("todas", texto="nadie-asi-zzz")[0], [])
+        por_sucursal = devoluciones_para_cartera("todas", tipo="sf", texto=self.sucursal.nombre[:5].lower())[0]
+        self.assertEqual([i["id"] for i in por_sucursal], [sf.id])
+        por_cliente = devoluciones_para_cartera("todas", texto="ULPER")[0]
+        self.assertIn(sf.id, [i["id"] for i in por_cliente if i["tipo"] == "sf"])
+
+        self.client.force_login(self.cartera_user)
+        r = self.client.get(reverse("cartera_lista"), {"ver": "todas", "tipo": "sf", "q": "zzz-nadie"})
+        self.assertContains(r, "No hay devoluciones que coincidan con la búsqueda.")
+        self.assertContains(r, '<option value="sf" selected>')
+        self.assertContains(r, "Quitar filtros")
+        self.assertContains(r, "tipo=sf&amp;q=zzz-nadie")
+        r = self.client.get(reverse("cartera_lista"), {"ver": "todas", "tipo": "raro"})
+        self.assertContains(r, '<option value="ambas" selected>')

@@ -9,6 +9,12 @@
   .chip.activo { background:var(--primary); border-color:var(--primary); color:#fff; font-weight:600; }
   .fechas { margin-left:auto; display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:12px; color:var(--muted); }
   .fechas input { padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px; }
+  .buscar { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin:4px 0 14px; padding:12px 14px; background:#F6F6FA; border:1px solid var(--border); border-radius:10px; }
+  .buscar label { display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.02em; }
+  .buscar label.crece { flex:1 1 260px; }
+  .buscar select, .buscar input { padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px; background:#fff; min-height:36px; }
+  .buscar button { min-height:36px; padding:0 18px; border:0; background:var(--primary); color:#fff; border-radius:6px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .buscar a { align-self:center; }
   .fechas button { min-height:34px; padding:0 12px; border:1px solid var(--primary); background:#fff; color:var(--primary); border-radius:6px; font-weight:600; cursor:pointer; font-family:inherit; }
   .est { display:inline-block; font-size:11px; font-weight:700; padding:3px 9px; border-radius:10px; white-space:nowrap; }
   .est-ESPERANDO_BODEGA { background:var(--pend-bg); color:var(--pend); }
@@ -113,18 +119,37 @@
 
     <div class="seccion">
       <div class="filtros">
-        <a class="chip{% if filtro == 'pendientes' %} activo{% endif %}" href="?ver=pendientes&desde={{ desde|date:'Y-m-d' }}&hasta={{ hasta|date:'Y-m-d' }}">Pendientes de revisar · {{ total_pendientes }}</a>
-        <a class="chip{% if filtro == 'recibidas' %} activo{% endif %}" href="?ver=recibidas&desde={{ desde|date:'Y-m-d' }}&hasta={{ hasta|date:'Y-m-d' }}">Recibidas por cartera</a>
-        <a class="chip{% if filtro == 'todas' %} activo{% endif %}" href="?ver=todas&desde={{ desde|date:'Y-m-d' }}&hasta={{ hasta|date:'Y-m-d' }}">Todas</a>
+        <a class="chip{% if filtro == 'pendientes' %} activo{% endif %}" href="?ver=pendientes&desde={{ desde|date:'Y-m-d' }}&hasta={{ hasta|date:'Y-m-d' }}{% if busqueda %}&{{ busqueda }}{% endif %}">Pendientes de revisar · {{ total_pendientes }}</a>
+        <a class="chip{% if filtro == 'recibidas' %} activo{% endif %}" href="?ver=recibidas&desde={{ desde|date:'Y-m-d' }}&hasta={{ hasta|date:'Y-m-d' }}{% if busqueda %}&{{ busqueda }}{% endif %}">Recibidas por cartera</a>
+        <a class="chip{% if filtro == 'todas' %} activo{% endif %}" href="?ver=todas&desde={{ desde|date:'Y-m-d' }}&hasta={{ hasta|date:'Y-m-d' }}{% if busqueda %}&{{ busqueda }}{% endif %}">Todas</a>
         {% if filtro != "pendientes" %}
         <form class="fechas" method="get">
           <input type="hidden" name="ver" value="{{ filtro }}">
+          {% if tipo_dev != "ambas" %}<input type="hidden" name="tipo" value="{{ tipo_dev }}">{% endif %}
+          {% if texto %}<input type="hidden" name="q" value="{{ texto }}">{% endif %}
           <label>Del <input type="date" name="desde" value="{{ desde|date:'Y-m-d' }}"></label>
           <label>al <input type="date" name="hasta" value="{{ hasta|date:'Y-m-d' }}"></label>
           <button type="submit">Ver</button>
         </form>
         {% endif %}
       </div>
+      <form class="buscar" method="get">
+        <input type="hidden" name="ver" value="{{ filtro }}">
+        <input type="hidden" name="desde" value="{{ desde|date:'Y-m-d' }}">
+        <input type="hidden" name="hasta" value="{{ hasta|date:'Y-m-d' }}">
+        <label>Tipo
+          <select name="tipo">
+            <option value="ambas"{% if tipo_dev == "ambas" %} selected{% endif %}>Con y sin factura</option>
+            <option value="e"{% if tipo_dev == "e" %} selected{% endif %}>Con factura</option>
+            <option value="sf"{% if tipo_dev == "sf" %} selected{% endif %}>Sin factura</option>
+          </select>
+        </label>
+        <label class="crece">Cliente o sucursal
+          <input type="search" name="q" value="{{ texto }}" placeholder="Ej. La Colonia, Sucursal Centro" maxlength="80">
+        </label>
+        <button type="submit">Buscar</button>
+        {% if busqueda %}<a class="detalle" href="?ver={{ filtro }}&desde={{ desde|date:'Y-m-d' }}&hasta={{ hasta|date:'Y-m-d' }}">Quitar filtros</a>{% endif %}
+      </form>
       {% if recortado %}<div class="aviso warn">Hay muchas devoluciones en este período: se muestran las más recientes. Acorta las fechas.</div>{% endif %}
       {% if items %}
       <div class="scroll">
@@ -146,7 +171,7 @@
         </table>
       </div>
       {% else %}
-        <div class="detalle" style="padding:14px 4px; text-align:center">{% if filtro == "pendientes" %}No hay devoluciones pendientes de revisar.{% else %}No hay devoluciones en este período.{% endif %}</div>
+        <div class="detalle" style="padding:14px 4px; text-align:center">{% if busqueda %}No hay devoluciones que coincidan con la búsqueda.{% elif filtro == "pendientes" %}No hay devoluciones pendientes de revisar.{% else %}No hay devoluciones en este período.{% endif %}</div>
       {% endif %}
       <div class="detalle" style="margin-top:10px">Toca una devolución para ver su detalle (productos, motivos, lote y vencimiento) y darla por enterada.</div>
     </div>

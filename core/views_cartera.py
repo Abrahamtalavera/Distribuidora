@@ -89,9 +89,19 @@ def cartera_lista_view(request):
     if desde > hasta:
         desde, hasta = hasta, desde
 
-    items, recortado = devoluciones_para_cartera(filtro, desde, hasta)
+    # Cambio #38: con factura / sin factura / ambas y búsqueda por cliente o sucursal.
+    from core.cartera import TIPOS_DEVOLUCION
+
+    tipo_dev = request.GET.get("tipo", "ambas")
+    if tipo_dev not in TIPOS_DEVOLUCION:
+        tipo_dev = "ambas"
+    texto = (request.GET.get("q") or "").strip()[:80]
+
+    items, recortado = devoluciones_para_cartera(filtro, desde, hasta, tipo=tipo_dev, texto=texto)
     pendientes, _ = (
-        (items, False) if filtro == "pendientes" else devoluciones_para_cartera("pendientes")
+        (items, False)
+        if filtro == "pendientes"
+        else devoluciones_para_cartera("pendientes", tipo=tipo_dev, texto=texto)
     )
 
     tipo, numero = _leer_seleccion(request.GET.get("sel"))
@@ -103,7 +113,12 @@ def cartera_lista_view(request):
             tipo=seleccion["tipo"], objeto_id=seleccion["id"]
         ).first()
 
-    consulta = {"ver": filtro, "desde": desde.isoformat(), "hasta": hasta.isoformat()}
+    busqueda = {}
+    if tipo_dev != "ambas":
+        busqueda["tipo"] = tipo_dev
+    if texto:
+        busqueda["q"] = texto
+    consulta = {"ver": filtro, "desde": desde.isoformat(), "hasta": hasta.isoformat(), **busqueda}
     return render(
         request,
         "core/cartera/lista.html",
@@ -114,6 +129,9 @@ def cartera_lista_view(request):
             "desde": desde,
             "hasta": hasta,
             "consulta": urlencode(consulta),
+            "busqueda": urlencode(busqueda),
+            "tipo_dev": tipo_dev,
+            "texto": texto,
             "total_pendientes": len(pendientes),
             "seleccion": seleccion,
             "puede_enterar": seleccion is not None and seleccion["estado"] == PENDIENTE,

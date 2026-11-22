@@ -22,7 +22,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.utils import timezone
 
 from core.entregas import valor_unitario
@@ -219,7 +219,10 @@ def periodo_por_defecto():
     return hoy - timedelta(days=30), hoy
 
 
-def devoluciones_para_cartera(filtro="pendientes", desde=None, hasta=None, limite=300):
+TIPOS_DEVOLUCION = ("ambas", "e", "sf")
+
+
+def devoluciones_para_cartera(filtro="pendientes", desde=None, hasta=None, limite=300, tipo="ambas", texto=""):
     """
     Lista de devoluciones (con y sin factura) para la pantalla de cartera,
     de la más reciente a la más vieja.
@@ -228,6 +231,9 @@ def devoluciones_para_cartera(filtro="pendientes", desde=None, hasta=None, limit
       (sin límite de fechas: no se debe perder ninguna).
     - "recibidas": las que cartera ya dio por enterado, en el período.
     - "todas": todo el período, incluso lo que aún espera a bodega.
+
+    Cambio #38: `tipo` = "e" (con factura), "sf" (sin factura) o "ambas";
+    `texto` busca en el nombre del cliente o de la sucursal.
     """
     if filtro not in FILTROS:
         filtro = "pendientes"
@@ -250,8 +256,22 @@ def devoluciones_para_cartera(filtro="pendientes", desde=None, hasta=None, limit
             entregas = entregas.filter(revisada_cartera_en__isnull=False)
             sin_factura = sin_factura.filter(revisada_cartera_en__isnull=False)
 
-    items = [_item_entrega(e) for e in entregas.order_by("-fecha_entrega")[:limite]]
-    items += [_item_sf(d) for d in sin_factura.order_by("-fecha_ingreso", "-id")[:limite]]
+    texto = (texto or "").strip()
+    if texto:
+        entregas = entregas.filter(
+            Q(factura__cliente__nombre__icontains=texto) | Q(factura__sucursal__nombre__icontains=texto)
+        )
+        sin_factura = sin_factura.filter(
+            Q(sucursal__cliente__nombre__icontains=texto)
+            | Q(cliente__nombre__icontains=texto)
+            | Q(sucursal__nombre__icontains=texto)
+        )
+
+    items = []
+    if tipo != "sf":
+        items += [_item_entrega(e) for e in entregas.order_by("-fecha_entrega")[:limite]]
+    if tipo != "e":
+        items += [_item_sf(d) for d in sin_factura.order_by("-fecha_ingreso", "-id")[:limite]]
     if filtro == "pendientes":
         items = [i for i in items if i["estado"] == PENDIENTE]
     items.sort(key=lambda i: (i["fecha"], i["id"]), reverse=True)
