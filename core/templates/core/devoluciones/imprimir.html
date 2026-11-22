@@ -20,6 +20,9 @@
   .barra .nota { font-size: 11.5px; color: #8A3F0E; background: #FDEEE3; border-radius: 6px; padding: 6px 10px; max-width: 320px; }
   .barra button { background: #2C318C; color: #fff; border: 0; border-radius: 6px; padding: 0 22px; min-height: 42px; font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
   .barra button.sec { background: #fff; color: #2C318C; border: 1px solid #2C318C; }
+  .msj { max-width: 1056px; margin: -4px auto 12px; padding: 9px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; }
+  .msj.ok { background: #EAF1DE; color: #4F6B22; }
+  .msj.err { background: #F8E1E1; color: #B71C1D; }
 
   .hoja { width: 1056px; height: 816px; margin: 0 auto 30px; background: #fff; box-shadow: 0 4px 18px rgba(20,22,60,.18); padding: 34px 40px 26px; position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 8px; }
   .hoja .orn { position: absolute; top: -22px; right: -22px; width: 92px; opacity: .55; }
@@ -52,7 +55,7 @@
   .pie { display: flex; justify-content: space-between; font-size: 9.5px; color: #64656F; border-top: 1px solid #DCDDE6; padding-top: 4px; }
   @media print {
     body { background: #fff; }
-    .barra { display: none; }
+    .barra, .msj { display: none !important; }
     .hoja { margin: 0; box-shadow: none; }
     .precio { border: 0; background: none; padding: 0; }
     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -60,13 +63,30 @@
 </style>
 </head>
 <body>
+<form method="post" id="formHoja">{% csrf_token %}
 <div class="barra">
-  <div class="t"><b>Imprimir devolución {{ h.numero }}</b><span>Esta barra no se imprime. Lo que escribas aquí aparece en la hoja.</span></div>
-  <label>N° del formato físico (opcional)<input type="text" id="fisico" maxlength="30" value="{{ fisico }}" placeholder="Ej. 0040975" autocomplete="off"></label>
-  <div class="nota">Precios: {% if h.tipo == "e" %}los de la factura{% else %}los del catálogo de productos{% endif %}. Puedes cambiarlos en la hoja, en las casillas naranjas; los totales se recalculan.</div>
-  <button type="button" onclick="window.print()">Imprimir</button>
+  <div class="t"><b>Imprimir devolución {{ h.numero }}</b>
+    {% if h.guardado %}
+      <span>Datos guardados por <strong>{{ h.guardado.guardado_por.get_username|default:"—" }}</strong> el {{ h.guardado.guardado_en|date:"d/m/Y H:i" }}{% if h.guardado.modificado_en %}; cambiados por <strong>{{ h.guardado.modificado_por.get_username|default:"—" }}</strong> el {{ h.guardado.modificado_en|date:"d/m/Y H:i" }}{% endif %}.</span>
+    {% elif editable %}
+      <span>Esta barra no se imprime. Digita el N° físico y los precios y guarda.</span>
+    {% else %}
+      <span>Cartera todavía no ha guardado el N° físico ni los precios.</span>
+    {% endif %}
+  </div>
+  {% if editable %}
+    <label>N° del formato físico (opcional)<input type="text" name="fisico" id="fisico" maxlength="30" value="{{ h.numero_fisico }}" placeholder="Ej. 0040975" autocomplete="off"></label>
+    <div class="nota">Precios: {% if h.guardado %}los guardados{% elif h.tipo == "e" %}los de la factura{% else %}los del catálogo de productos{% endif %}. Cámbialos en las casillas naranjas; los totales se recalculan.{% if h.guardado %} Como administrador puedes corregirlos.{% else %} Una vez guardados, solo un administrador podrá cambiarlos.{% endif %}</div>
+    <button type="submit" name="imprimir" value="1">Guardar e imprimir</button>
+    <button type="submit" class="sec">Solo guardar</button>
+    {% if h.guardado %}<button type="button" class="sec" onclick="window.print()">Imprimir</button>{% endif %}
+  {% else %}
+    <div class="nota">{% if h.guardado %}N° físico, precios y totales guardados por cartera. Solo un administrador puede cambiarlos.{% else %}Se imprimirá con los precios {% if h.tipo == "e" %}de la factura{% else %}del catálogo{% endif %} y sin N° físico.{% endif %}</div>
+    <button type="button" onclick="window.print()">Imprimir</button>
+  {% endif %}
   <button type="button" class="sec" onclick="window.close()">Cerrar</button>
 </div>
+{% if error %}<div class="msj err">{{ error }}</div>{% elif recien_guardado %}<div class="msj ok">Datos guardados.</div>{% endif %}
 
 <div class="hoja">
   <img class="orn" src="{% static 'core/marca/motivo_esquina.svg' %}" alt="" aria-hidden="true">
@@ -75,7 +95,7 @@
     <div class="tit"><b>DEVOLUCIONES</b><span>Bodega de Producto Terminado</span></div>
     <div class="num">
       <div><b style="color:#2C318C;">N° </b><span class="n">{{ h.numero }}</span></div>
-      <div id="filaFisico" {% if not fisico %}hidden{% endif %}>N° formato físico: <b id="numFisico">{{ fisico }}</b></div>
+      <div id="filaFisico" {% if not h.numero_fisico %}hidden{% endif %}>N° formato físico: <b id="numFisico">{{ h.numero_fisico }}</b></div>
       <div style="color:#64656F;">{{ h.tipo_nombre }}</div>
     </div>
   </div>
@@ -103,7 +123,7 @@
         <td>{{ f.nombre }}</td>
         <td>{{ f.causa|default:"—" }}</td>
         <td class="c">{{ f.cantidad|cantidad }}</td>
-        <td class="r"><input class="precio" type="text" inputmode="decimal" value="{{ f.precio_texto }}" aria-label="Precio unitario de {{ f.nombre }}"></td>
+        <td class="r">{% if editable %}<input class="precio" type="text" inputmode="decimal" name="precio_{{ f.clave }}" value="{{ f.precio_texto }}" aria-label="Precio unitario de {{ f.nombre }}">{% else %}{{ f.precio|moneda }}{% endif %}</td>
         <td class="r total-fila">{{ f.total|moneda }}</td>
         <td class="c">{{ f.lote|default:"" }}</td>
         <td class="c">{{ f.vence|date:"d/m/Y" }}</td>
@@ -129,13 +149,15 @@
     <span>{% if h.carga %}{{ h.carga.codigo_reporte }}{% if h.carga.ruta %} · {{ h.carga.ruta.nombre }}{% endif %}{% endif %}</span>
   </div>
 </div>
+</form>
 
 <script>
 (function () {
+  {% if imprimir_ya %}window.addEventListener("load", function () { setTimeout(function () { window.print(); }, 300); });{% endif %}
   var fisico = document.getElementById("fisico");
   var fila = document.getElementById("filaFisico");
   var num = document.getElementById("numFisico");
-  fisico.addEventListener("input", function () {
+  if (fisico) fisico.addEventListener("input", function () {
     var v = fisico.value.trim();
     num.textContent = v;
     fila.hidden = !v;
@@ -147,7 +169,9 @@
     document.querySelectorAll("tr.fila").forEach(function (tr) {
       var cant = parseFloat(tr.dataset.cant) || 0;
       var tasa = parseFloat(tr.dataset.tasa) || 0;
-      var precio = parseFloat(tr.querySelector(".precio").value.replace(/,/g, "")) || 0;
+      var input = tr.querySelector(".precio");
+      if (!input) return;
+      var precio = parseFloat(input.value.replace(/,/g, "")) || 0;
       var t = r2(cant * precio);
       tr.querySelector(".total-fila").textContent = fmt(t);
       sub += t; iva += r2(t * tasa);

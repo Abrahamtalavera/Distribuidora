@@ -96,6 +96,12 @@ def cartera_lista_view(request):
 
     tipo, numero = _leer_seleccion(request.GET.get("sel"))
     seleccion = item_cartera(tipo, numero) if tipo else None
+    if seleccion is not None:
+        from core.models import DatosImpresionDevolucion
+
+        seleccion["impresion"] = DatosImpresionDevolucion.objects.filter(
+            tipo=seleccion["tipo"], objeto_id=seleccion["id"]
+        ).first()
 
     consulta = {"ver": filtro, "desde": desde.isoformat(), "hasta": hasta.isoformat()}
     return render(
@@ -224,12 +230,12 @@ def cartera_recaudacion_view(request):
 
 def devolucion_imprimir_view(request, tipo, objeto_id):
     """
-    Hoja "DEVOLUCIONES – Bodega de Producto Terminado". La pueden abrir
-    cartera (desde la ficha de revisión) y bodega (desde la recepción), solo
-    cuando bodega ya recibió la devolución.
+    Cambio #37 / #37.1: hoja imprimible de una devolución. Cartera digita el
+    N° del formato físico y los precios y los guarda; una vez guardados solo
+    un administrador los cambia. Bodega solo imprime.
     """
     from core.bodega import puede_recibir
-    from core.impresion_devolucion import ImpresionError, hoja
+    from core.impresion_devolucion import ImpresionError, guardar, hoja, puede_editar
 
     if not request.user.is_authenticated:
         return redirect(f"{reverse('cartera_acceso')}?next={request.get_full_path()}")
@@ -239,8 +245,29 @@ def devolucion_imprimir_view(request, tipo, objeto_id):
         datos = hoja(tipo, objeto_id)
     except ImpresionError as exc:
         return render(request, "core/devoluciones/no_imprimible.html", {"mensaje": str(exc)}, status=404)
+
+    error = ""
+    if request.method == "POST":
+        precios = {f["clave"]: request.POST.get(f"precio_{f['clave']}", "") for f in datos["filas"]}
+        try:
+            guardar(datos, request.user, request.POST.get("fisico", ""), precios)
+        except ImpresionError as exc:
+            if not puede_editar(request.user, datos["guardado"]):
+                return render(request, "core/cartera/sin_permiso.html", status=403)
+            error = str(exc)
+        else:
+            destino = reverse("devolucion_imprimir", args=[tipo, objeto_id])
+            return redirect(f"{destino}?guardado=1" + ("&imprimir=1" if request.POST.get("imprimir") else ""))
+
     return render(
         request,
         "core/devoluciones/imprimir.html",
-        {"h": datos, "ahora": timezone.now(), "fisico": (request.GET.get("fisico") or "").strip()[:30]},
+        {
+            "h": datos,
+            "ahora": timezone.now(),
+            "editable": puede_editar(request.user, datos["guardado"]),
+            "error": error,
+            "recien_guardado": request.GET.get("guardado") == "1",
+            "imprimir_ya": request.GET.get("imprimir") == "1",
+        },
     )

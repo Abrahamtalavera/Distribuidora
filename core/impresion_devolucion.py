@@ -18,13 +18,14 @@ en la hoja antes de imprimir; el IVA sale de la factura o, sin factura, al
 15%.
 """
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.db.models import Prefetch
 from django.utils import timezone
 
 from core.cartera import devolucion_sf_recibida_en_bodega, entrega_recibida_en_bodega
 from core.models import (
+    DatosImpresionDevolucion,
     DevolucionSinFactura,
     DevolucionSinFacturaDetalle,
     Entrega,
@@ -47,15 +48,15 @@ def _plano(valor):
     return f"{valor:.4f}".rstrip("0").rstrip(".") if valor is not None else ""
 
 
-def _filas_de_linea(base, inventario, merma, total):
+def _filas_de_linea(linea_id, base, inventario, merma, total):
     """Una fila por destino (inventario / merma) con lo que bodega registró."""
     filas = []
     if inventario:
-        filas.append(dict(base, cantidad=inventario, estado="A inventario", inventario=True, bodega=BODEGA_INVENTARIO))
+        filas.append(dict(base, clave=f"{linea_id}-inv", cantidad=inventario, estado="A inventario", inventario=True, bodega=BODEGA_INVENTARIO))
     if merma:
-        filas.append(dict(base, cantidad=merma, estado="Merma", inventario=False, bodega=BODEGA_MERMA))
+        filas.append(dict(base, clave=f"{linea_id}-mer", cantidad=merma, estado="Merma", inventario=False, bodega=BODEGA_MERMA))
     if not filas:  # bodega no recibió nada de esta línea
-        filas.append(dict(base, cantidad=total, estado="No recibido", inventario=None, bodega="—"))
+        filas.append(dict(base, clave=f"{linea_id}-nr", cantidad=total, estado="No recibido", inventario=None, bodega="—"))
     return filas
 
 
@@ -98,7 +99,7 @@ def _hoja_entrega(entrega_id):
             "vence": d.fecha_vencimiento,
             "factura": factura.numero_factura,
         }
-        filas += _filas_de_linea(base, d.recibido_inventario, d.recibido_merma, d.cantidad_devuelta)
+        filas += _filas_de_linea(d.id, base, d.recibido_inventario, d.recibido_merma, d.cantidad_devuelta)
 
     carga = e.carga
     sucursal = factura.sucursal
@@ -152,7 +153,7 @@ def _hoja_sin_factura(devolucion_id):
             "vence": d.fecha_vencimiento,
             "factura": "—",
         }
-        filas += _filas_de_linea(base, d.recibido_inventario, d.recibido_merma, d.cantidad_recolectada)
+        filas += _filas_de_linea(d.id, base, d.recibido_inventario, d.recibido_merma, d.cantidad_recolectada)
 
     return {
         "tipo": "sf",
@@ -172,6 +173,28 @@ def _hoja_sin_factura(devolucion_id):
     }
 
 
+def puede_editar(usuario, guardado):
+    """
+    Cambio #37.1: la primera vez solo cartera digita y guarda; una vez
+    guardado, solo un administrador (superusuario) puede cambiarlo.
+    """
+    from core.cartera import puede_revisar
+
+    if guardado is None:
+        return puede_revisar(usuario)
+    return bool(usuario and usuario.is_active and usuario.is_superuser)
+
+
+def _totales(filas):
+    subtotal = iva = CERO
+    for f in filas:
+        f["precio_texto"] = _plano(f["precio"])
+        f["total"] = (f["cantidad"] * f["precio"]).quantize(Decimal("0.01"))
+        subtotal += f["total"]
+        iva += (f["total"] * f["tasa_iva"]).quantize(Decimal("0.01"))
+    return subtotal, iva
+
+
 def hoja(tipo, objeto_id):
     """Datos de la hoja imprimible. Lanza ImpresionError si no se puede imprimir."""
     if tipo == "e":
@@ -181,20 +204,63 @@ def hoja(tipo, objeto_id):
     else:
         raise ImpresionError("Esa devolución no existe.")
 
-    subtotal = iva = CERO
+    guardado = (
+        DatosImpresionDevolucion.objects.select_related("guardado_por", "modificado_por")
+        .filter(tipo=tipo, objeto_id=objeto_id)
+        .first()
+    )
     for i, f in enumerate(datos["filas"]):
         f["n"] = i
-        f["precio_texto"] = _plano(f["precio"])
         f["cant_texto"] = _plano(f["cantidad"])
         f["tasa_texto"] = _plano(f["tasa_iva"])
-        f["total"] = (f["cantidad"] * f["precio"]).quantize(Decimal("0.01"))
-        subtotal += f["total"]
-        iva += (f["total"] * f["tasa_iva"]).quantize(Decimal("0.01"))
-    datos["subtotal"] = subtotal
-    datos["iva"] = iva
-    datos["total"] = subtotal + iva
+        if guardado and f["clave"] in guardado.precios:
+            try:
+                f["precio"] = Decimal(str(guardado.precios[f["clave"]]))
+            except InvalidOperation:
+                pass
+    datos["subtotal"], datos["iva"] = _totales(datos["filas"])
+    datos["total"] = datos["subtotal"] + datos["iva"]
+    datos["guardado"] = guardado
+    datos["numero_fisico"] = guardado.numero_fisico if guardado else ""
     datos["vacias"] = range(max(FILAS_MINIMAS - len(datos["filas"]), 0))
     return datos
+
+
+def guardar(datos, usuario, numero_fisico, precios_texto):
+    """
+    Guarda el N° físico y los precios digitados. `precios_texto` es
+    {clave_de_fila: texto}. Lanza ImpresionError si algo no es válido.
+    Los totales se calculan aquí, no se confía en los del navegador.
+    """
+    guardado = datos["guardado"]
+    if not puede_editar(usuario, guardado):
+        raise ImpresionError(
+            "Solo un administrador puede cambiar estos datos una vez guardados."
+            if guardado else "Solo el personal de cartera puede guardar estos datos."
+        )
+    precios = {}
+    for f in datos["filas"]:
+        texto = (precios_texto.get(f["clave"]) or "").replace(",", "").strip()
+        try:
+            precio = Decimal(texto) if texto else CERO
+        except InvalidOperation:
+            raise ImpresionError(f"El precio de {f['nombre']} no es un número válido.")
+        if precio < 0 or precio >= Decimal("1e9"):
+            raise ImpresionError(f"El precio de {f['nombre']} no es válido.")
+        f["precio"] = precio.quantize(Decimal("0.0001"))
+        precios[f["clave"]] = _plano(f["precio"])
+    subtotal, iva = _totales(datos["filas"])
+
+    if guardado is None:
+        guardado = DatosImpresionDevolucion(tipo=datos["tipo"], objeto_id=datos["objeto_id"], guardado_por=usuario)
+    else:
+        guardado.modificado_por = usuario
+        guardado.modificado_en = timezone.now()
+    guardado.numero_fisico = (numero_fisico or "").strip()[:30]
+    guardado.precios = precios
+    guardado.subtotal, guardado.iva, guardado.total = subtotal, iva, subtotal + iva
+    guardado.save()
+    return guardado
 
 
 def imprimibles_de_la_carga(carga):

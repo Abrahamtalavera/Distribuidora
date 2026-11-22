@@ -936,3 +936,18 @@ class CorreccionHoraAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(models.DatosImpresionDevolucion)
+class DatosImpresionDevolucionAdmin(admin.ModelAdmin):
+    """Cambio #37.1: solo consulta; se corrigen desde la hoja de impresión."""
+
+    list_display = ("tipo", "objeto_id", "numero_fisico", "total", "guardado_por", "guardado_en", "modificado_por", "modificado_en")
+    list_filter = ("tipo",)
+    search_fields = ("numero_fisico",)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False

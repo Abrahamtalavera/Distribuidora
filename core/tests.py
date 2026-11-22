@@ -2046,3 +2046,72 @@ class ImprimirDevolucionTests(CarteraTests):
         self.assertEqual(h["filas"][0]["precio"], linea.precio_unitario)
         self.assertEqual(h["filas"][0]["factura"], linea.factura.numero_factura)
         self.assertEqual({f["bodega"] for f in h["filas"]}, {"Bodega 4"})
+
+
+class GuardarImpresionTests(CarteraTests):
+    """Cambio #37.1: cartera guarda N° físico y precios; luego solo administradores."""
+
+    def _post(self, url, clave, precio, fisico="0040975", **extra):
+        return self.client.post(url, {"fisico": fisico, f"precio_{clave}": precio, **extra})
+
+    def test_cartera_guarda_y_luego_solo_admin_cambia(self):
+        from core.impresion_devolucion import hoja
+        from core.models import DatosImpresionDevolucion
+
+        dev = self._devolucion_sf()
+        url = reverse("devolucion_imprimir", args=["sf", dev.id])
+        clave = hoja("sf", dev.id)["filas"][0]["clave"]
+
+        # Bodega no puede guardar ni ve casillas de precio.
+        self.client.force_login(self.bodega_user)
+        self.assertNotContains(self.client.get(url), 'name="precio_')
+        self.assertEqual(self._post(url, clave, "10").status_code, 403)
+        self.assertFalse(DatosImpresionDevolucion.objects.exists())
+
+        # Cartera guarda; los totales se calculan en el servidor.
+        self.client.force_login(self.cartera_user)
+        r = self._post(url, clave, "10", imprimir="1")
+        self.assertRedirects(r, url + "?guardado=1&imprimir=1")
+        d = DatosImpresionDevolucion.objects.get()
+        self.assertEqual(d.numero_fisico, "0040975")
+        self.assertEqual(d.precios[clave], "10")
+        cant = hoja("sf", dev.id)["filas"][0]["cantidad"]
+        self.assertEqual(d.subtotal, cant * 10)
+        self.assertEqual(d.iva, (cant * 10 * Decimal("0.15")).quantize(Decimal("0.01")))
+        self.assertEqual(d.guardado_por, self.cartera_user)
+
+        # Ya guardado: cartera ya no puede cambiarlo.
+        r = self.client.get(url)
+        self.assertNotContains(r, 'name="precio_')
+        self.assertContains(r, "0040975")
+        self.assertEqual(self._post(url, clave, "99", fisico="1").status_code, 403)
+        d.refresh_from_db()
+        self.assertEqual(d.precios[clave], "10")
+        r = self.client.get(reverse("cartera_lista") + f"?sel=sf-{dev.id}")
+        self.assertContains(r, "N° formato físico: <b>0040975</b>")
+
+        # Bodega ve lo guardado al reimprimir.
+        self.client.force_login(self.bodega_user)
+        self.assertContains(self.client.get(url), "0040975")
+
+        # El administrador sí lo corrige.
+        self.client.force_login(self.admin)
+        self.assertContains(self.client.get(url), 'name="precio_')
+        self._post(url, clave, "12.5", fisico="0040976")
+        d.refresh_from_db()
+        self.assertEqual((d.numero_fisico, d.precios[clave], d.modificado_por), ("0040976", "12.5", self.admin))
+        self.assertEqual(d.guardado_por, self.cartera_user)
+
+    def test_precio_invalido_no_guarda(self):
+        from core.impresion_devolucion import hoja
+        from core.models import DatosImpresionDevolucion
+
+        dev = self._devolucion_sf()
+        url = reverse("devolucion_imprimir", args=["sf", dev.id])
+        clave = hoja("sf", dev.id)["filas"][0]["clave"]
+        self.client.force_login(self.cartera_user)
+        r = self._post(url, clave, "abc")
+        self.assertContains(r, "no es un número válido")
+        r = self._post(url, clave, "-5")
+        self.assertContains(r, "no es válido")
+        self.assertFalse(DatosImpresionDevolucion.objects.exists())

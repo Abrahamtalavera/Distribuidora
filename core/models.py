@@ -1174,3 +1174,38 @@ class CorreccionHora(models.Model):
 
     def __str__(self):
         return f"{self.get_campo_display()} · {self.carga.codigo_reporte}"
+
+
+class DatosImpresionDevolucion(models.Model):
+    """
+    Cambio #37.1: lo que cartera digita al imprimir una devolución (N° del
+    formato físico y precios por línea) y los totales que resultaron. Solo
+    cartera lo guarda la primera vez; después solo un administrador lo cambia.
+    """
+
+    TIPO_CHOICES = [("e", "Con factura"), ("sf", "Sin factura")]
+    tipo = models.CharField(max_length=2, choices=TIPO_CHOICES)
+    objeto_id = models.PositiveIntegerField()
+    numero_fisico = models.CharField("N° formato físico", max_length=30, blank=True)
+    precios = models.JSONField(default=dict, blank=True)
+    subtotal = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    iva = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    total = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    guardado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    guardado_en = models.DateTimeField(auto_now_add=True)
+    modificado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    modificado_en = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Datos de impresión de devolución"
+        verbose_name_plural = "Datos de impresión de devoluciones"
+        constraints = [
+            models.UniqueConstraint(fields=["tipo", "objeto_id"], name="datos_impresion_unicos")
+        ]
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} #{self.objeto_id} · {self.numero_fisico or 's/n'}"
