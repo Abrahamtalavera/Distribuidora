@@ -1976,3 +1976,73 @@ class CarteraCargasTests(Cambio28Base):
         self.assertEqual(resumen[-1][7], 100.0)
         self.assertRedirects(self.client.get("/cartera/recaudacion/"), reverse("cartera_cargas"),
                              fetch_redirect_response=False)
+
+
+class ImprimirDevolucionTests(CarteraTests):
+    """Cambio #37: hoja imprimible de devoluciones (cartera y bodega)."""
+
+    def test_sin_factura_dos_filas_y_bodegas(self):
+        from core.impresion_devolucion import hoja
+
+        dev = self._devolucion_sf()
+        linea = dev.detalles.get()
+        linea.recibido_inventario, linea.recibido_merma = Decimal("3"), Decimal("2")
+        linea.save()
+        dev.contacto_sucursal = "Karen Vargas"
+        dev.save()
+        h = hoja("sf", dev.id)
+        self.assertEqual(h["numero"], dev.codigo_reporte)
+        self.assertEqual(h["persona"], "Karen Vargas")
+        self.assertEqual([(f["estado"], f["bodega"], f["cantidad"]) for f in h["filas"]],
+                         [("A inventario", "Bodega 4", Decimal("3")), ("Merma", "Bodega 7", Decimal("2"))])
+        self.assertEqual(h["filas"][0]["causa"], self.motivo.nombre)
+        self.assertEqual(h["filas"][0]["lote"], "L-9")
+
+    def test_no_se_imprime_antes_de_bodega(self):
+        from core.impresion_devolucion import ImpresionError, hoja
+
+        dev = self._devolucion_sf(estado="RECOLECTADA")
+        with self.assertRaises(ImpresionError):
+            hoja("sf", dev.id)
+        self.client.force_login(self.cartera_user)
+        r = self.client.get(reverse("cartera_lista") + f"?ver=todas&sel=sf-{dev.id}")
+        self.assertContains(r, "Disponible cuando bodega la reciba")
+        r = self.client.get(reverse("devolucion_imprimir", args=["sf", dev.id]))
+        self.assertEqual(r.status_code, 404)
+
+    def test_cartera_y_bodega_pueden_imprimir(self):
+        dev = self._devolucion_sf()
+        url = reverse("devolucion_imprimir", args=["sf", dev.id])
+        self.client.force_login(self.cartera_user)
+        r = self.client.get(reverse("cartera_lista") + f"?sel=sf-{dev.id}")
+        self.assertContains(r, url)
+        r = self.client.get(url + "?fisico=0040975")
+        self.assertContains(r, "Bodega de Producto Terminado")
+        self.assertContains(r, "0040975")
+        self.assertContains(r, "Causa de la devolución")
+        self.client.force_login(self.bodega_user)
+        self.assertEqual(self.client.get(url).status_code, 200)
+        r = self.client.get(reverse("bodega_recepcion", args=[dev.carga_id]))
+        self.assertContains(r, "Imprimir devoluciones recibidas")
+        self.assertContains(r, url)
+        otro = User.objects.create_user("nadie37", password="x")
+        self.client.force_login(otro)
+        self.assertEqual(self.client.get(url).status_code, 403)
+
+    def test_con_factura_precio_e_iva_de_la_factura(self):
+        from core.bodega import registrar_recepcion
+        from core.impresion_devolucion import hoja
+
+        _, linea, entrega = self.entrega_con_devolucion(
+            [{"cantidad": "4", "motivo_id": self.motivo.id, "lote": "L-A"},
+             {"cantidad": "2", "motivo_id": self.otro_motivo.id}]
+        )
+        self.carga.estado = "RUTA_TERMINADA"
+        self.carga.save()
+        registrar_recepcion(self.carga, usuario=self.bodega_user,
+                            cantidades={d.id: (d.cantidad_devuelta, Decimal("0")) for d in entrega.lineas.all()})
+        h = hoja("e", entrega.id)
+        self.assertEqual(len(h["filas"]), 2)
+        self.assertEqual(h["filas"][0]["precio"], linea.precio_unitario)
+        self.assertEqual(h["filas"][0]["factura"], linea.factura.numero_factura)
+        self.assertEqual({f["bodega"] for f in h["filas"]}, {"Bodega 4"})

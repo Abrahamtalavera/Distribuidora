@@ -1,0 +1,163 @@
+{% load static formato %}<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Devolución {{ h.numero }} · Sol Maya</title>
+{% comment %}Cambio #37: hoja imprimible de una devolución (formato "DEVOLUCIONES – Bodega de Producto Terminado"), carta horizontal.{% endcomment %}
+<link rel="stylesheet" href="{% static 'core/marca/fuentes.css' %}">
+<link rel="icon" type="image/png" href="{% static 'core/marca/logo_sol_maya_color.png' %}">
+<style>
+  @page { size: letter landscape; margin: 0; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #E9E9EF; font-family: "Barlow", "Segoe UI", Arial, sans-serif; color: #23243A; }
+  .barra { max-width: 1056px; margin: 16px auto 14px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; background: #fff; border: 1px solid #DCDDE6; border-radius: 10px; padding: 10px 14px; }
+  .barra .t { flex: 1 1 260px; }
+  .barra .t b { font-family: "Baloo 2", sans-serif; font-size: 16px; color: #2C318C; display: block; }
+  .barra .t span { font-size: 12px; color: #64656F; }
+  .barra label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: #64656F; text-transform: uppercase; }
+  .barra input { padding: 7px 8px; border: 1px solid #C9C9D6; border-radius: 6px; font-family: inherit; font-size: 13px; width: 170px; }
+  .barra .nota { font-size: 11.5px; color: #8A3F0E; background: #FDEEE3; border-radius: 6px; padding: 6px 10px; max-width: 320px; }
+  .barra button { background: #2C318C; color: #fff; border: 0; border-radius: 6px; padding: 0 22px; min-height: 42px; font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+  .barra button.sec { background: #fff; color: #2C318C; border: 1px solid #2C318C; }
+
+  .hoja { width: 1056px; height: 816px; margin: 0 auto 30px; background: #fff; box-shadow: 0 4px 18px rgba(20,22,60,.18); padding: 34px 40px 26px; position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 8px; }
+  .hoja .orn { position: absolute; top: -22px; right: -22px; width: 92px; opacity: .55; }
+  .cab { display: grid; grid-template-columns: 170px 1fr 240px; align-items: center; border-bottom: 3px solid #E97324; padding-bottom: 6px; }
+  .cab img { width: 118px; }
+  .cab .tit { text-align: center; }
+  .cab .tit b { font-family: "Baloo 2", sans-serif; font-size: 26px; font-weight: 800; color: #2C318C; line-height: 1; display: block; }
+  .cab .tit span { font-size: 15px; font-weight: 700; }
+  .cab .num { text-align: right; font-size: 11px; line-height: 1.5; }
+  .cab .num .n { font-family: "Baloo 2", sans-serif; font-size: 17px; font-weight: 700; color: #B71C1D; }
+  .datos { display: grid; grid-template-columns: 1.25fr 1fr; gap: 5px 26px; }
+  .campo { display: flex; align-items: baseline; gap: 6px; font-size: 11.5px; }
+  .campo b { white-space: nowrap; font-weight: 600; color: #2C318C; }
+  .campo span { flex: 1; border-bottom: 1px solid #9C9EB8; padding: 0 4px 1px; min-height: 15px; }
+  table { border-collapse: collapse; width: 100%; }
+  th { background: #2C318C; color: #fff; font-size: 9.5px; font-weight: 700; padding: 4px 5px; border: 1px solid #2C318C; text-align: center; }
+  td { border: 1px solid #9C9EB8; font-size: 11px; padding: 2px 5px; height: 19px; }
+  .r { text-align: right; white-space: nowrap; }
+  .c { text-align: center; }
+  .sin-borde { border: 0; }
+  .et { background: #ECEDF7; font-weight: 700; color: #2C318C; }
+  .et-tot { background: #2C318C; font-weight: 700; color: #fff; }
+  .inv { color: #4F6B22; font-weight: 700; }
+  .mer { color: #B71C1D; font-weight: 700; }
+  .precio { width: 70px; border: 1px dashed #E97324; background: #FFF8F2; font-family: inherit; font-size: 11px; text-align: right; padding: 1px 3px; }
+  .firmas { margin-top: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 36px; padding-top: 10px; }
+  .firmas div { text-align: center; font-size: 11px; }
+  .firmas .linea { height: 26px; border-bottom: 1px solid #23243A; display: flex; align-items: flex-end; justify-content: center; font-size: 11.5px; color: #4F6B22; font-weight: 700; }
+  .firmas small { display: block; color: #64656F; font-size: 10.5px; }
+  .pie { display: flex; justify-content: space-between; font-size: 9.5px; color: #64656F; border-top: 1px solid #DCDDE6; padding-top: 4px; }
+  @media print {
+    body { background: #fff; }
+    .barra { display: none; }
+    .hoja { margin: 0; box-shadow: none; }
+    .precio { border: 0; background: none; padding: 0; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+<div class="barra">
+  <div class="t"><b>Imprimir devolución {{ h.numero }}</b><span>Esta barra no se imprime. Lo que escribas aquí aparece en la hoja.</span></div>
+  <label>N° del formato físico (opcional)<input type="text" id="fisico" maxlength="30" value="{{ fisico }}" placeholder="Ej. 0040975" autocomplete="off"></label>
+  <div class="nota">Precios: {% if h.tipo == "e" %}los de la factura{% else %}los del catálogo de productos{% endif %}. Puedes cambiarlos en la hoja, en las casillas naranjas; los totales se recalculan.</div>
+  <button type="button" onclick="window.print()">Imprimir</button>
+  <button type="button" class="sec" onclick="window.close()">Cerrar</button>
+</div>
+
+<div class="hoja">
+  <img class="orn" src="{% static 'core/marca/motivo_esquina.svg' %}" alt="" aria-hidden="true">
+  <div class="cab">
+    <img src="{% static 'core/marca/logo_sol_maya_color.png' %}" alt="Sol Maya">
+    <div class="tit"><b>DEVOLUCIONES</b><span>Bodega de Producto Terminado</span></div>
+    <div class="num">
+      <div><b style="color:#2C318C;">N° </b><span class="n">{{ h.numero }}</span></div>
+      <div id="filaFisico" {% if not fisico %}hidden{% endif %}>N° formato físico: <b id="numFisico">{{ fisico }}</b></div>
+      <div style="color:#64656F;">{{ h.tipo_nombre }}</div>
+    </div>
+  </div>
+
+  <div class="datos">
+    <div class="campo"><b>Fecha de devolución (del punto de venta):</b><span>{{ h.fecha_devolucion|date:"d/m/Y" }}</span></div>
+    <div class="campo"><b>Fecha de entrega (para revisión):</b><span>{{ h.fecha_revision|date:"d/m/Y" }}</span></div>
+    <div class="campo"><b>Nombre del cliente:</b><span>{{ h.cliente }}</span></div>
+    <div class="campo"><b>Nombre de la persona que emite la devolución:</b><span>{{ h.persona }}</span></div>
+    <div class="campo"><b>Sucursal:</b><span>{{ h.sucursal }}</span></div>
+    <div class="campo"><b>Departamento:</b><span>{{ h.departamento }}</span></div>
+  </div>
+
+  <table>
+    <thead><tr>
+      <th style="width:62px;">Código</th><th>Nombre del producto</th><th style="width:150px;">Causa de la devolución</th>
+      <th style="width:54px;">Cantidad</th><th style="width:80px;">P. Unit.</th><th style="width:82px;">Total C$</th>
+      <th style="width:82px;">Lote</th><th style="width:72px;">Fecha vence</th><th style="width:76px;">Estado</th>
+      <th style="width:72px;">Fact. afectada</th><th style="width:62px;">Bod. a enviar</th>
+    </tr></thead>
+    <tbody>
+      {% for f in h.filas %}
+      <tr class="fila" data-cant="{{ f.cant_texto }}" data-tasa="{{ f.tasa_texto }}">
+        <td>{{ f.codigo }}</td>
+        <td>{{ f.nombre }}</td>
+        <td>{{ f.causa|default:"—" }}</td>
+        <td class="c">{{ f.cantidad|cantidad }}</td>
+        <td class="r"><input class="precio" type="text" inputmode="decimal" value="{{ f.precio_texto }}" aria-label="Precio unitario de {{ f.nombre }}"></td>
+        <td class="r total-fila">{{ f.total|moneda }}</td>
+        <td class="c">{{ f.lote|default:"" }}</td>
+        <td class="c">{{ f.vence|date:"d/m/Y" }}</td>
+        <td class="c {% if f.inventario %}inv{% elif f.inventario is False %}mer{% endif %}">{{ f.estado }}</td>
+        <td class="c">{{ f.factura }}</td>
+        <td class="c"><b>{{ f.bodega }}</b></td>
+      </tr>
+      {% endfor %}
+      {% for _ in h.vacias %}<tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>{% endfor %}
+      <tr><td colspan="4" class="sin-borde"></td><td class="r et">Sub-total</td><td class="r" id="subtotal">{{ h.subtotal|moneda }}</td><td colspan="5" class="sin-borde"></td></tr>
+      <tr><td colspan="4" class="sin-borde"></td><td class="r et">I.V.A.</td><td class="r" id="iva">{{ h.iva|moneda }}</td><td colspan="5" class="sin-borde"></td></tr>
+      <tr><td colspan="4" class="sin-borde"></td><td class="r et-tot">Total C$</td><td class="r" id="total"><b>{{ h.total|moneda }}</b></td><td colspan="5" class="sin-borde"></td></tr>
+    </tbody>
+  </table>
+
+  <div class="firmas">
+    <div><div class="linea"></div><b>Recibí conforme</b><small>Nombre y firma</small></div>
+    <div><div class="linea"></div><b>Entregué conforme</b><small>Nombre y firma</small></div>
+    <div><div class="linea">{% if h.revisada_en %}✓ {{ h.revisada_por.get_username|default:"—" }} · {{ h.revisada_en|date:"d/m/Y H:i" }}{% endif %}</div><b>Revisado por cartera</b><small>{% if h.revisada_en %}Dado por enterado en la app{% else %}Pendiente de revisión de cartera{% endif %}</small></div>
+  </div>
+  <div class="pie">
+    <span>Impreso desde la app de distribución Sol Maya · {{ ahora|date:"d/m/Y H:i" }} · por {{ request.user.get_username }}</span>
+    <span>{% if h.carga %}{{ h.carga.codigo_reporte }}{% if h.carga.ruta %} · {{ h.carga.ruta.nombre }}{% endif %}{% endif %}</span>
+  </div>
+</div>
+
+<script>
+(function () {
+  var fisico = document.getElementById("fisico");
+  var fila = document.getElementById("filaFisico");
+  var num = document.getElementById("numFisico");
+  fisico.addEventListener("input", function () {
+    var v = fisico.value.trim();
+    num.textContent = v;
+    fila.hidden = !v;
+  });
+  function fmt(n) { return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function r2(n) { return Math.round(n * 100) / 100; }
+  function recalcular() {
+    var sub = 0, iva = 0;
+    document.querySelectorAll("tr.fila").forEach(function (tr) {
+      var cant = parseFloat(tr.dataset.cant) || 0;
+      var tasa = parseFloat(tr.dataset.tasa) || 0;
+      var precio = parseFloat(tr.querySelector(".precio").value.replace(/,/g, "")) || 0;
+      var t = r2(cant * precio);
+      tr.querySelector(".total-fila").textContent = fmt(t);
+      sub += t; iva += r2(t * tasa);
+    });
+    document.getElementById("subtotal").textContent = fmt(sub);
+    document.getElementById("iva").textContent = fmt(iva);
+    document.getElementById("total").innerHTML = "<b>" + fmt(sub + iva) + "</b>";
+  }
+  document.querySelectorAll(".precio").forEach(function (i) { i.addEventListener("input", recalcular); });
+})();
+</script>
+</body>
+</html>

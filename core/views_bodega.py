@@ -35,6 +35,7 @@ from core.devoluciones_sf import (
     resumen_recepcion_sin_factura,
 )
 from core.entregas import leer_fecha_vencimiento, limpiar_lote
+from core.impresion_devolucion import imprimibles_de_la_carga
 from core.models import Carga
 
 
@@ -246,6 +247,8 @@ def bodega_recepcion_view(request, carga_id):
             "recepcion_sf": recepcion_sf,
             "editando_sf": editando_sf,
             "obs_escrita_sf": obs_escrita_sf,
+            # Cambio #37: devoluciones ya recibidas que se pueden imprimir.
+            "imprimibles": imprimibles_de_la_carga(carga),
         },
     )
 

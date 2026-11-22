@@ -80,6 +80,12 @@ urlpatterns = [
     path("cartera/cargas/", views_cartera.cartera_cargas_view, name="cartera_cargas"),
     path("cartera/cargas/excel/", views_cartera.cartera_cargas_excel_view, name="cartera_cargas_excel"),
     path("cartera/recaudacion/", views_cartera.cartera_recaudacion_view, name="cartera_recaudacion"),
+    # Cambio #37: hoja imprimible de una devolución (cartera y bodega).
+    path(
+        "devoluciones/imprimir/<str:tipo>/<int:objeto_id>/",
+        views_cartera.devolucion_imprimir_view,
+        name="devolucion_imprimir",
+    ),
     path("cartera/salir/", views_cartera.cartera_salir_view, name="cartera_salir"),
     path(
         "cartera/enterado/<str:tipo>/<int:objeto_id>/",

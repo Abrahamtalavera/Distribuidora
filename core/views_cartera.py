@@ -17,6 +17,7 @@ from django.contrib.auth import logout
 from django.contrib.auth.views import LoginView
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
@@ -216,3 +217,30 @@ def cartera_cargas_excel_view(request):
 def cartera_recaudacion_view(request):
     """La "Recaudación por ruta" (Cambio #33) se reemplazó por la consulta de cargas."""
     return redirect("cartera_cargas")
+
+
+# --- Cambio #37: hoja imprimible de una devolución ------------------------------
+
+
+def devolucion_imprimir_view(request, tipo, objeto_id):
+    """
+    Hoja "DEVOLUCIONES – Bodega de Producto Terminado". La pueden abrir
+    cartera (desde la ficha de revisión) y bodega (desde la recepción), solo
+    cuando bodega ya recibió la devolución.
+    """
+    from core.bodega import puede_recibir
+    from core.impresion_devolucion import ImpresionError, hoja
+
+    if not request.user.is_authenticated:
+        return redirect(f"{reverse('cartera_acceso')}?next={request.get_full_path()}")
+    if not (puede_revisar(request.user) or puede_recibir(request.user)):
+        return render(request, "core/cartera/sin_permiso.html", status=403)
+    try:
+        datos = hoja(tipo, objeto_id)
+    except ImpresionError as exc:
+        return render(request, "core/devoluciones/no_imprimible.html", {"mensaje": str(exc)}, status=404)
+    return render(
+        request,
+        "core/devoluciones/imprimir.html",
+        {"h": datos, "ahora": timezone.now(), "fisico": (request.GET.get("fisico") or "").strip()[:30]},
+    )

@@ -1,0 +1,11 @@
+{% extends "core/bodega/base.html" %}
+{% block titulo %}No se puede imprimir{% endblock %}
+{% block cuerpo %}
+<div class="desk angosto">
+  <div class="desk-head"><div><h1>Imprimir devolución</h1></div></div>
+  <div class="desk-body">
+    <div class="aviso warn">{{ mensaje }}</div>
+    <button class="btn-pri ancho" type="button" onclick="window.close()">Cerrar</button>
+  </div>
+</div>
+{% endblock %}
