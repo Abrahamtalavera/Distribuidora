@@ -1,0 +1,43 @@
+{% extends "core/bodega/base.html" %}
+{% load formato %}
+{% block titulo %}Logística — Conductores{% endblock %}
+{% block estilos %}{% include "core/flota/_estilos.html" %}{% endblock %}
+{% block cuerpo %}
+<div class="desk">
+  {% include "core/flota/_cabecera.html" %}
+  <div class="desk-body">
+    <div class="dos">
+      <div class="seccion" style="min-width:0">
+        <h3>Conductores (repartidores activos)</h3>
+        {% if conductores %}
+        <table>
+          <thead><tr><th>Conductor</th><th>Teléfono</th><th>Documentos</th></tr></thead>
+          <tbody>
+          {% for c in conductores %}
+            <tr class="clic{% if sel and sel.id == c.id %} sel{% endif %}">
+              <td><a class="fila" href="?c={{ c.id }}">{{ c.nombre }}</a></td>
+              <td>{{ c.telefono|default:"—" }}</td>
+              <td>{% if c.peor %}<span class="est est-{{ c.peor.estado.css }}">{{ c.peor.tipo.nombre }}: {{ c.peor.estado.texto|lower }}</span>{% else %}{% for d in c.docs %}<span class="est est-{{ d.estado.css }}">{{ d.tipo.nombre }}: {{ d.estado.texto|lower }}</span> {% endfor %}{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+          <div class="detalle">No hay repartidores activos.</div>
+        {% endif %}
+        <p class="detalle" style="margin:10px 0 0">Son los repartidores registrados en el admin. El aviso de la licencia les aparece en su pantalla de la app.</p>
+      </div>
+      {% if sel %}
+      <div class="seccion" style="min-width:0;border:2px solid var(--primary)">
+        <h2 style="margin:0 0 4px;font-size:19px;color:var(--primary-dark)">{{ sel.nombre }}</h2>
+        <div class="detalle">{{ sel.telefono|default:"Sin teléfono" }}</div>
+        <div class="sub-tit">Documentos del conductor</div>
+        {% include "core/flota/_documentos.html" with campo="conductor" param="c" dueno_id=sel.id %}
+      </div>
+      {% else %}
+      <div class="seccion detalle">Toca un conductor para ver o registrar su licencia.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

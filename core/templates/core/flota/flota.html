@@ -1,0 +1,74 @@
+{% extends "core/bodega/base.html" %}
+{% load formato %}
+{% block titulo %}Logística — Flota{% endblock %}
+{% block estilos %}{% include "core/flota/_estilos.html" %}{% endblock %}
+{% block cuerpo %}
+<div class="desk">
+  {% include "core/flota/_cabecera.html" %}
+  <div class="desk-body">
+    <div class="dos">
+      <div class="seccion" style="min-width:0">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+          <h3 style="margin:0;flex:1">Vehículos</h3>
+          <form method="get" class="form-linea" style="margin:0;padding:0;background:none;border:0">
+            <input type="search" name="q" value="{{ texto }}" placeholder="Placa o descripción" aria-label="Buscar vehículo" style="width:200px">
+            <button type="submit">Buscar</button>
+          </form>
+        </div>
+        {% if vehiculos %}
+        <div class="scroll">
+        <table>
+          <thead><tr><th>Placa</th><th>Descripción</th><th>Marca / modelo</th><th class="r">Último odómetro</th><th class="r">Rend. 30 días</th><th>Documentos</th></tr></thead>
+          <tbody>
+          {% for v in vehiculos %}
+            <tr class="clic{% if sel and sel.id == v.id %} sel{% endif %}">
+              <td style="white-space:nowrap"><a class="fila" href="?v={{ v.id }}{% if texto %}&q={{ texto|urlencode }}{% endif %}">{{ v.placa }}</a>{% if not v.activo %} <span class="est est-gris">Inactivo</span>{% endif %}</td>
+              <td>{{ v.descripcion|default:"—" }}</td>
+              <td>{% if v.marca or v.modelo %}{{ v.marca }} {{ v.modelo }}{% else %}<span class="vacio">Sin dato</span>{% endif %}</td>
+              <td class="r">{% if v.ultima %}{{ v.ultima.odometro|cantidad }} km{% else %}<span class="vacio">Sin cargas</span>{% endif %}</td>
+              <td class="r">{% if v.rendimiento %}{{ v.rendimiento|km }} km/l{% else %}—{% endif %}</td>
+              <td>{% if v.peor %}<span class="est est-{{ v.peor.estado.css }}">{{ v.peor.tipo.nombre }}: {{ v.peor.estado.texto|lower }}</span>{% elif v.n_faltan %}<span class="est est-gris">Faltan {{ v.n_faltan }}</span>{% else %}<span class="est est-ok">Al día</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% else %}
+          <div class="detalle">No hay vehículos{% if texto %} que coincidan con "{{ texto }}"{% endif %}.</div>
+        {% endif %}
+        <p class="detalle" style="margin:10px 0 0">Los vehículos son los mismos que usan las cargas. El odómetro y el rendimiento salen de las cargas de combustible.</p>
+      </div>
+
+      {% if sel %}
+      <div class="seccion" style="min-width:0;border:2px solid var(--primary)">
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <h2 style="margin:0;font-size:19px;color:var(--primary-dark)">{{ sel.placa }}</h2>
+          <span class="detalle">{{ sel.descripcion }} · {% if sel.activo %}Activo{% else %}Inactivo{% endif %}</span>
+          <span style="flex:1"></span>
+          <a href="{% url 'logistica_combustible' %}?vehiculo={{ sel.id }}&estado=todas" style="font-size:13px">Ver cargas de combustible</a>
+        </div>
+        <form method="post" action="{% url 'logistica_vehiculo_guardar' sel.id %}">
+          {% csrf_token %}
+          <div class="sub-tit">Datos del vehículo</div>
+          <div class="rejilla">
+            <label>Marca<input type="text" name="marca" value="{{ sel.marca }}" maxlength="60" placeholder="Sin dato"></label>
+            <label>Modelo<input type="text" name="modelo" value="{{ sel.modelo }}" maxlength="60" placeholder="Sin dato"></label>
+            <label>Año<input type="number" name="anio" value="{{ sel.anio|default_if_none:'' }}" min="1950" max="2100" placeholder="Sin dato"></label>
+            <label>Tipo<select name="tipo"><option value="">Sin dato</option>{% for k, n in opciones_tipo %}<option value="{{ k }}" {% if sel.tipo == k %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
+            <label>Combustible<select name="combustible"><option value="">Sin dato</option>{% for k, n in opciones_combustible %}<option value="{{ k }}" {% if sel.combustible == k %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
+            <label>Tanque (litros)<input type="text" inputmode="decimal" name="capacidad_tanque" value="{% if sel.capacidad_tanque %}{{ sel.capacidad_tanque|stringformat:'s' }}{% endif %}" placeholder="Sin dato"></label>
+            <label>Capacidad de carga<input type="text" name="capacidad_carga" value="{{ sel.capacidad_carga }}" maxlength="60" placeholder="Sin dato"></label>
+            <label>Propiedad<select name="propiedad"><option value="">Sin dato</option>{% for k, n in opciones_propiedad %}<option value="{{ k }}" {% if sel.propiedad == k %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
+          </div>
+          <div class="acciones" style="margin-top:10px"><button type="submit" class="btn-azul">Guardar datos</button></div>
+        </form>
+        <div class="detalle" style="margin-top:6px">Tarjeta de flota: {% for t in tarjetas %}•••• {{ t.ultimos4 }}{% if not forloop.last %}, {% endif %}{% empty %}<span class="vacio">sin tarjeta asignada</span>{% endfor %}{% if request.user.is_staff %} · <a href="{% url 'admin:core_tarjetaflota_changelist' %}">Administrar tarjetas</a>{% endif %}</div>
+
+        <div class="sub-tit">Documentos del vehículo</div>
+        {% include "core/flota/_documentos.html" with campo="vehiculo" param="v" dueno_id=sel.id %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

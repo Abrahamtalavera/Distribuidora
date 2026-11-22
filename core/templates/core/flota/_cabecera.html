@@ -1,0 +1,17 @@
+{% comment %}Cambio #39: cabecera y pestañas de logística.{% endcomment %}
+<div class="desk-head">
+  <div><h1>Logística — Flota</h1><div class="sub">Vehículos, documentos, conductores y combustible</div></div>
+  <form class="usuario" method="post" action="{% url 'logistica_salir' %}">
+    {% csrf_token %}
+    {% if request.user.is_staff %}<a href="{% url 'admin:index' %}" style="color:#fff;">Ir al admin</a>{% endif %}
+    <span>Usuario: {{ request.user.get_username }}</span>
+    <button type="submit">Salir</button>
+  </form>
+</div>
+<nav class="pestanas">
+  <a href="{% url 'logistica_flota' %}" class="{% if pestana == 'flota' %}activa{% endif %}">Flota</a>
+  <a href="{% url 'logistica_vencimientos' %}" class="{% if pestana == 'vencimientos' %}activa{% endif %}">Vencimientos{% if n_atencion %} · {{ n_atencion }}{% endif %}</a>
+  <a href="{% url 'logistica_combustible' %}" class="{% if pestana == 'combustible' %}activa{% endif %}">Combustible{% if n_por_revisar %} · {{ n_por_revisar }} por revisar{% endif %}</a>
+  <a href="{% url 'logistica_conductores' %}" class="{% if pestana == 'conductores' %}activa{% endif %}">Conductores</a>
+</nav>
+{% if messages %}<div style="padding:14px 20px 0">{% for m in messages %}<div class="aviso {% if m.level_tag == 'error' %}error{% else %}ok{% endif %}" style="margin:0 0 8px">{{ m }}</div>{% endfor %}</div>{% endif %}

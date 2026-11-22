@@ -1,0 +1,49 @@
+{% comment %}
+Cambio #39: documentos vigentes de un vehículo o conductor, formulario para
+agregar o renovar y el historial. Recibe: docs, historial, tipos, campo
+("vehiculo"/"conductor"), dueno_id, renovar, volver.
+{% endcomment %}
+{% load formato %}
+<table>
+  <thead><tr><th>Documento</th><th>Número</th><th>Vence</th><th>Estado</th><th>Archivo</th><th></th></tr></thead>
+  <tbody>
+    {% for d in docs %}
+    <tr>
+      <td>{{ d.tipo.nombre }}</td>
+      <td>{% if d.doc.numero %}{{ d.doc.numero }}{% else %}<span class="vacio">Sin dato</span>{% endif %}</td>
+      <td>{% if d.doc.fecha_vencimiento %}{{ d.doc.fecha_vencimiento|date:"d/m/Y" }}{% else %}<span class="vacio">—</span>{% endif %}</td>
+      <td><span class="est est-{{ d.estado.css }}">{{ d.estado.texto }}</span></td>
+      <td>{% if d.doc.archivo_id %}<a href="{% url 'logistica_archivo' d.doc.archivo_id %}" target="_blank" rel="noopener">{% if d.doc.archivo.tipo_contenido == "application/pdf" %}PDF{% else %}Foto{% endif %}</a>{% endif %}</td>
+      <td class="r"><a href="?{{ param }}={{ dueno_id }}&renovar={{ d.tipo.id }}#form-doc">{% if d.doc %}Renovar{% else %}Agregar{% endif %}</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<form id="form-doc" method="post" action="{% url 'logistica_documento' %}" enctype="multipart/form-data" class="form-linea" style="margin-top:12px">
+  {% csrf_token %}
+  <input type="hidden" name="{{ campo }}" value="{{ dueno_id }}">
+  <input type="hidden" name="volver" value="{{ volver }}">
+  <label>Documento
+    <select name="tipo" required>
+      {% for t in tipos %}<option value="{{ t.id }}" {% if renovar == t.id|stringformat:"s" %}selected{% endif %}>{{ t.nombre }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Número<input type="text" name="numero" maxlength="60" style="width:150px"></label>
+  <label>Vence<input type="date" name="vence"></label>
+  <label>Foto o PDF<input type="file" name="archivo" accept="image/*,application/pdf" style="width:220px"></label>
+  <button type="submit">Guardar documento</button>
+  <div class="detalle" style="flex-basis:100%">Si ya hay uno vigente del mismo tipo, este lo renueva y el anterior queda en el historial.</div>
+</form>
+
+{% if historial %}
+<details style="margin-top:6px">
+  <summary class="detalle" style="cursor:pointer">Historial ({{ historial|length }})</summary>
+  <table style="margin-top:6px">
+    <tr><th>Documento</th><th>Número</th><th>Venció</th><th>Registrado</th><th>Archivo</th></tr>
+    {% for h in historial %}
+    <tr><td>{{ h.tipo.nombre }}</td><td>{{ h.numero|default:"—" }}</td><td>{{ h.fecha_vencimiento|date:"d/m/Y"|default:"—" }}</td><td>{{ h.registrado_en|date:"d/m/Y" }}</td><td>{% if h.archivo_id %}<a href="{% url 'logistica_archivo' h.archivo_id %}" target="_blank" rel="noopener">Ver</a>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+</details>
+{% endif %}

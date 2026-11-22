@@ -1,0 +1,80 @@
+{% extends "core/bodega/base.html" %}
+{% load formato %}
+{% block titulo %}Logística — Vencimientos{% endblock %}
+{% block estilos %}{% include "core/flota/_estilos.html" %}{% endblock %}
+{% block cuerpo %}
+<div class="desk">
+  {% include "core/flota/_cabecera.html" %}
+  <div class="desk-body">
+    <div class="dos" style="grid-template-columns:minmax(0,1.7fr) minmax(0,1fr)">
+      <div class="seccion" style="min-width:0">
+        <h3>Documentos de vehículos y conductores</h3>
+        <div class="chips">
+          {% for clave, nombre in filtros.items %}
+            <a class="chip{% if filtro == clave %} activo{% endif %}" href="?ver={{ clave }}&de={{ de }}">{{ nombre }} · {% for k, n in conteos.items %}{% if k == clave %}{{ n }}{% endif %}{% endfor %}</a>
+          {% endfor %}
+          <form method="get" style="margin-left:auto;display:flex;gap:6px;align-items:center">
+            <input type="hidden" name="ver" value="{{ filtro }}">
+            <label class="detalle" for="de">De</label>
+            <select id="de" name="de" onchange="this.form.submit()" style="padding:7px 8px;border:1px solid var(--border);border-radius:6px;font-family:inherit">
+              {% for k, n in de_opciones.items %}<option value="{{ k }}" {% if de == k %}selected{% endif %}>{{ n }}</option>{% endfor %}
+            </select>
+            <noscript><button type="submit">Ver</button></noscript>
+          </form>
+        </div>
+        {% if filas %}
+        <div class="scroll">
+        <table>
+          <thead><tr><th>Documento</th><th>De</th><th>Número</th><th>Vence</th><th>Estado</th><th>Próximo aviso</th><th></th></tr></thead>
+          <tbody>
+          {% for f in filas %}
+            <tr>
+              <td>{{ f.tipo.nombre }}</td>
+              <td>{% if f.vehiculo %}<b>{{ f.vehiculo.placa }}</b>{% if f.vehiculo.descripcion %} · {{ f.vehiculo.descripcion }}{% endif %}{% else %}{{ f.conductor.nombre }} <span class="detalle">(conductor)</span>{% endif %}</td>
+              <td>{% if f.doc and f.doc.numero %}{{ f.doc.numero }}{% else %}<span class="vacio">Sin dato</span>{% endif %}</td>
+              <td>{% if f.doc and f.doc.fecha_vencimiento %}{{ f.doc.fecha_vencimiento|date:"d/m/Y" }}{% else %}<span class="vacio">—</span>{% endif %}</td>
+              <td><span class="est est-{{ f.estado.css }}">{{ f.estado.texto }}</span></td>
+              <td class="detalle">{{ f.aviso }}</td>
+              <td class="r">
+                {% if f.vehiculo %}<a href="{% url 'logistica_flota' %}?v={{ f.vehiculo.id }}&renovar={{ f.tipo.id }}#form-doc">{% else %}<a href="{% url 'logistica_conductores' %}?c={{ f.conductor.id }}&renovar={{ f.tipo.id }}#form-doc">{% endif %}{% if f.doc %}Renovar{% else %}Agregar{% endif %}</a>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% else %}
+          <div class="detalle" style="padding:12px 4px">No hay documentos en este filtro.</div>
+        {% endif %}
+        <p class="detalle" style="margin:10px 0 0">"Renovar" pide la nueva fecha, número y foto o PDF; el documento anterior queda en el historial.</p>
+      </div>
+
+      <div style="min-width:0">
+        <div class="seccion">
+          <h3>Cuándo se avisa</h3>
+          <table>
+            <tr><td><span class="est est-dosmeses">2 meses antes</span></td><td>Primer aviso</td></tr>
+            <tr><td><span class="est est-mes">1 mes antes</span></td><td>Segundo aviso</td></tr>
+            <tr><td><span class="est est-semana">Cada semana</span></td><td>Durante el último mes, hasta el día que vence</td></tr>
+            <tr><td><span class="est est-venc">Ya vencido</span></td><td>Cada semana hasta que se renueve</td></tr>
+          </table>
+          <div class="sub-tit">A quién y dónde</div>
+          <ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.6">
+            <li>Alerta en el tablero y en esta pantalla.</li>
+            <li>Correo diario a <b>{{ correos }}</b>:
+              {% if correo_activo %}<span class="est est-ok">Activo</span>{% else %}<span class="est est-gris">Pendiente de configurar la cuenta de correo</span>{% endif %}</li>
+            <li>A cada conductor, el aviso de su licencia en su pantalla de la app (no por correo).</li>
+          </ul>
+        </div>
+        <div class="seccion">
+          <h3>Tipos de documento</h3>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            {% for t in tipos %}<span class="est {% if t.activo %}est-gris{% else %}est-gris{% endif %}"{% if not t.activo %} style="text-decoration:line-through"{% endif %}>{{ t.get_aplica_a_display }} · {{ t.nombre }}</span>{% endfor %}
+          </div>
+          {% if request.user.is_staff %}<div style="margin-top:8px"><a href="{% url 'admin:core_tipodocumentoflota_changelist' %}" style="font-size:13px">Agregar o cambiar tipos</a></div>{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

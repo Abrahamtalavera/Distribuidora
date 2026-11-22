@@ -17,6 +17,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
 
+from core.flota import aviso_licencia
 from core.entregas import (
     MAX_PAGOS,
     RegistroEntregaError,
@@ -183,6 +184,8 @@ def entregas_lista_view(request, carga_id):
             "devoluciones_sf": devoluciones_de_la_carga_para_repartidor(carga)
             if puede_capturar
             else [],
+            # Cambio #39: aviso de la licencia del conductor.
+            "aviso_licencia": aviso_licencia(carga.conductor),
         },
     )
 

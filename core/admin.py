@@ -465,9 +465,16 @@ class ModalidadPagoAdmin(admin.ModelAdmin):
 
 @admin.register(models.Vehiculo)
 class VehiculoAdmin(admin.ModelAdmin):
-    list_display = ("placa", "descripcion", "activo", "pide_paquetes_costo")
-    list_filter = ("pide_paquetes_costo",)
-    search_fields = ("placa",)
+    list_display = ("placa", "descripcion", "marca", "modelo", "tipo", "activo", "pide_paquetes_costo")
+    list_filter = ("activo", "tipo", "pide_paquetes_costo")
+    search_fields = ("placa", "descripcion", "marca")
+    fieldsets = (
+        (None, {"fields": ("placa", "descripcion", "activo", "pide_paquetes_costo")}),
+        ("Flota (Cambio #39)", {"fields": (
+            ("marca", "modelo", "anio"), ("tipo", "combustible", "propiedad"),
+            ("capacidad_tanque", "capacidad_carga"),
+        )}),
+    )
 
 
 class FacturaEnCargaInline(admin.TabularInline):
@@ -951,3 +958,158 @@ class DatosImpresionDevolucionAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+
+
+# --- Cambio #39: flota ------------------------------------------------------
+
+
+@admin.register(models.Conductor)
+class ConductorAdmin(admin.ModelAdmin):
+    """Repartidores con su licencia. Se crean y editan en Vendedores."""
+
+    list_display = ("nombre", "telefono", "activo", "licencia", "estado_licencia")
+    list_filter = ("activo",)
+    search_fields = ("nombre",)
+    fields = ("nombre", "telefono", "activo")
+    readonly_fields = fields
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(tipo="REPARTIDOR")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def _licencia(self, obj):
+        return (
+            models.DocumentoFlota.objects.filter(conductor=obj, vigente=True, tipo__aplica_a="CONDUCTOR")
+            .order_by("fecha_vencimiento").first()
+        )
+
+    @admin.display(description="Licencia (vence)")
+    def licencia(self, obj):
+        d = self._licencia(obj)
+        if d is None:
+            return "Falta"
+        return d.fecha_vencimiento.strftime("%d/%m/%Y") if d.fecha_vencimiento else "Sin fecha"
+
+    @admin.display(description="Estado")
+    def estado_licencia(self, obj):
+        from core.flota import estado_documento
+
+        d = self._licencia(obj)
+        return estado_documento(d)["texto"] if d else "—"
+
+
+@admin.register(models.TipoDocumentoFlota)
+class TipoDocumentoFlotaAdmin(admin.ModelAdmin):
+    list_display = ("nombre", "aplica_a", "activo", "orden")
+    list_filter = ("aplica_a", "activo")
+    list_editable = ("activo", "orden")
+
+
+@admin.register(models.DocumentoFlota)
+class DocumentoFlotaAdmin(admin.ModelAdmin):
+    list_display = ("tipo", "dueno", "numero", "fecha_vencimiento", "estado", "vigente", "ultimo_aviso_en")
+    list_filter = ("vigente", "tipo__aplica_a", "tipo")
+    search_fields = ("numero", "vehiculo__placa", "conductor__nombre")
+    raw_id_fields = ("archivo",)
+    readonly_fields = ("ultimo_aviso_en", "ultimo_aviso_dias", "registrado_por", "registrado_en")
+    autocomplete_fields = ()
+    date_hierarchy = "fecha_vencimiento"
+
+    @admin.display(description="De")
+    def dueno(self, obj):
+        return obj.dueno_texto
+
+    @admin.display(description="Estado")
+    def estado(self, obj):
+        from core.flota import estado_documento
+
+        return estado_documento(obj)["texto"] if obj.vigente else "Historial"
+
+
+@admin.register(models.TarjetaFlota)
+class TarjetaFlotaAdmin(admin.ModelAdmin):
+    list_display = ("__str__", "vehiculo", "activa", "notas")
+    list_filter = ("activa",)
+    search_fields = ("ultimos4", "vehiculo__placa")
+
+
+@admin.register(models.AbastecimientoCombustible)
+class AbastecimientoCombustibleAdmin(admin.ModelAdmin):
+    list_display = ("fecha", "vehiculo", "conductor", "odometro", "litros", "monto", "comprobante", "estado")
+    list_filter = ("estado", "vehiculo")
+    search_fields = ("comprobante", "vehiculo__placa", "conductor__nombre", "estacion")
+    date_hierarchy = "fecha"
+    raw_id_fields = ("carga", "foto")
+    readonly_fields = ("original", "registrado_por", "registrado_en", "revisado_por", "revisado_en")
+
+
+@admin.register(models.EjecucionAvisosFlota)
+class EjecucionAvisosFlotaAdmin(admin.ModelAdmin):
+    list_display = ("fecha", "documentos", "enviado", "detalle", "ejecutado_en")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+# Cambio #39: el inicio del admin agrupa las entradas en bloques
+# (Distribución / Flota / Configuración) para encontrar fácil cada cosa.
+GRUPOS_ADMIN = [
+    ("DISTRIBUCIÓN", "distribucion", "Clientes y ventas",
+     ["Cliente", "Sucursal", "ContactoSucursal", "Producto", "Vendedor", "Factura", "ModalidadPago"]),
+    ("DISTRIBUCIÓN", "distribucion", "Rutas y entregas",
+     ["Ruta", "Carga", "Entrega", "ParadaCliente", "CorreccionHora"]),
+    ("DISTRIBUCIÓN", "distribucion", "Devoluciones",
+     ["DevolucionSinFactura", "MotivoDevolucion", "AreaResponsable", "DatosImpresionDevolucion"]),
+    ("DISTRIBUCIÓN", "distribucion", "Cartera y cobros", ["CarteraCobro", "Pago", "Consignacion"]),
+    ("FLOTA", "flota", "Vehículos y conductores", ["Vehiculo", "Conductor"]),
+    ("FLOTA", "flota", "Documentos", ["DocumentoFlota", "TipoDocumentoFlota", "EjecucionAvisosFlota"]),
+    ("FLOTA", "flota", "Combustible", ["AbastecimientoCombustible", "TarjetaFlota"]),
+    ("CONFIGURACIÓN", "configuracion", "Usuarios y permisos", ["User", "Group"]),
+]
+
+
+def _app_list_agrupada(self, request, app_label=None):
+    from django.contrib.admin import AdminSite
+    from django.urls import reverse
+    from django.utils.text import slugify
+
+    apps = AdminSite.get_app_list(self, request, app_label)
+    if app_label:  # página de una app: se deja como Django la arma
+        return apps
+    modelos = {}
+    for app in apps:
+        for m in app["models"]:
+            modelos[m["object_name"]] = m
+    resultado = []
+    for bloque, clase, nombre, nombres in GRUPOS_ADMIN:
+        lista = [modelos.pop(n) for n in nombres if n in modelos]
+        if lista:
+            slug = slugify(nombre)
+            resultado.append({
+                "name": nombre,
+                "app_label": f"{clase}-{slug}",
+                "app_url": f"{reverse('admin:index')}#{clase}-{slug}",
+                "has_module_perms": True,
+                "models": lista,
+                "bloque": bloque,
+                "bloque_clase": clase,
+            })
+    if modelos:  # lo que no esté en un grupo (nuevo) no se pierde
+        resultado.append({
+            "name": "Otros", "app_label": "otros", "app_url": reverse("admin:index") + "#otros",
+            "has_module_perms": True, "models": sorted(modelos.values(), key=lambda m: m["name"]),
+            "bloque": "CONFIGURACIÓN", "bloque_clase": "configuracion",
+        })
+    return resultado
+
+
+admin.site.get_app_list = _app_list_agrupada.__get__(admin.site)

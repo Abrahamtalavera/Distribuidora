@@ -113,3 +113,22 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024
 
+
+# Cambio #39: correo para los avisos de vencimiento de documentos de flota.
+# Mientras EMAIL_HOST no esté configurado en Railway, no se envían correos
+# (los avisos siguen apareciendo en el tablero y en la pantalla de logística).
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "1") == "1"
+EMAIL_USE_SSL = os.environ.get("EMAIL_USE_SSL", "0") == "1"
+EMAIL_TIMEOUT = 20
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "avisos@solmaya.com.ni")
+AVISOS_FLOTA_CORREOS = [
+    c.strip()
+    for c in os.environ.get(
+        "AVISOS_FLOTA_CORREOS", "logistica@solmaya.com.ni,atalavera@solmaya.com.ni"
+    ).split(",")
+    if c.strip()
+]

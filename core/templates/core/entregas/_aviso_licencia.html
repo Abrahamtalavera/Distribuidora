@@ -1,0 +1,6 @@
+{% comment %}Cambio #39: aviso de la licencia del conductor (solo en la app, no por correo).{% endcomment %}
+{% if aviso_licencia %}
+<div class="aviso {% if aviso_licencia.css == 'venc' or aviso_licencia.css == 'semana' %}error{% else %}warn{% endif %}" role="status" style="font-size:14px;">
+  <b>{{ aviso_licencia.titulo }}.</b> Renuévala y entrega la copia a logística.
+</div>
+{% endif %}

@@ -1,0 +1,101 @@
+{% extends "core/bodega/base.html" %}
+{% load formato %}
+{% block titulo %}Logística — Combustible{% endblock %}
+{% block estilos %}{% include "core/flota/_estilos.html" %}{% endblock %}
+{% block cuerpo %}
+<div class="desk">
+  {% include "core/flota/_cabecera.html" %}
+  <div class="desk-body">
+    <form method="get" class="form-linea">
+      <label>Del<input type="date" name="desde" value="{{ f.desde|date:'Y-m-d' }}"></label>
+      <label>Al<input type="date" name="hasta" value="{{ f.hasta|date:'Y-m-d' }}"></label>
+      <label>Vehículo<select name="vehiculo"><option value="">Todos</option>{% for v in vehiculos %}<option value="{{ v.id }}" {% if f.vehiculo_id == v.id %}selected{% endif %}>{{ v.placa }}{% if v.descripcion %} · {{ v.descripcion }}{% endif %}</option>{% endfor %}</select></label>
+      <label>Conductor<select name="conductor"><option value="">Todos</option>{% for c in conductores %}<option value="{{ c.id }}" {% if f.conductor_id == c.id %}selected{% endif %}>{{ c.nombre }}</option>{% endfor %}</select></label>
+      <label>Estado<select name="estado">{% for k, n in estados.items %}<option value="{{ k }}" {% if f.estado == k %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
+      <button type="submit">Ver</button>
+      <span style="flex:1"></span>
+      <a class="btn-sec" href="{% url 'logistica_combustible_excel' %}?{{ consulta }}">Descargar Excel</a>
+    </form>
+
+    <div class="tarjetas">
+      <div class="tarjeta"><span>Gasto del período</span><b>C$ {{ r.gasto|moneda }}</b><small>{{ r.n }} carga{{ r.n|pluralize }}</small></div>
+      <div class="tarjeta"><span>Litros</span><b>{{ r.litros|km }} l</b><small>{{ r.vehiculos }} vehículo{{ r.vehiculos|pluralize }}</small></div>
+      <div class="tarjeta"><span>Km recorridos</span><b>{{ r.km|cantidad }} km</b><small>Según odómetro</small></div>
+      <div class="tarjeta"><span>Rendimiento promedio</span><b style="color:#4F6B22">{% if r.rendimiento %}{{ r.rendimiento|km }} km/l{% else %}—{% endif %}</b><small>{% if r.costo_km %}C$ {{ r.costo_km|moneda }} por km{% else %}&nbsp;{% endif %}</small></div>
+      <div class="tarjeta"><span>Por revisar</span><b style="color:#E97324">{{ r.por_revisar }}</b><small>{% if r.con_alerta %}{{ r.con_alerta }} con alerta{% else %}Sin alertas{% endif %}</small></div>
+    </div>
+    <p class="detalle" style="margin:-4px 0 12px">Los totales son de todas las cargas del período (cualquier estado). Para cada carga, los km son los recorridos desde la carga anterior del mismo vehículo.</p>
+    {% if recortado %}<div class="aviso warn">Hay muchas cargas en este período: se muestran las más recientes. Acorta las fechas.</div>{% endif %}
+
+    <div class="dos" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)">
+      <div class="seccion" style="min-width:0">
+        <h3>{{ titulo_lista }}</h3>
+        {% if filas %}
+        <div class="scroll">
+        <table>
+          <thead><tr><th>Fecha</th><th>Vehículo</th><th>Conductor</th><th class="r">Odómetro</th><th class="r">Km</th><th class="r">Litros</th><th class="r">C$</th><th class="r">km/l</th><th>Estado / alertas</th></tr></thead>
+          <tbody>
+          {% for a in filas %}
+            <tr class="clic{% if sel and sel.id == a.id %} sel{% endif %}">
+              <td><a class="fila" href="?{{ consulta }}&sel={{ a.id }}">{{ a.fecha|date:"d/m H:i" }}</a></td>
+              <td><b>{{ a.vehiculo.placa }}</b></td>
+              <td>{{ a.conductor.nombre|default:"—" }}</td>
+              <td class="r">{{ a.odometro|cantidad }}</td>
+              <td class="r"{% if a.km is not None and a.km <= 0 %} style="color:#B71C1D;font-weight:700"{% endif %}>{% if a.km is not None %}{{ a.km|cantidad }}{% else %}—{% endif %}</td>
+              <td class="r">{{ a.litros|km }}</td>
+              <td class="r">{{ a.monto|moneda }}</td>
+              <td class="r">{% if a.rendimiento %}{{ a.rendimiento|km }}{% else %}—{% endif %}</td>
+              <td><div class="alertas-fila">
+                {% if a.estado == "PENDIENTE" %}{% for css, t in a.alertas %}<span class="est est-{{ css }}">{{ t }}</span>{% empty %}<span class="est est-ok">Sin alertas</span>{% endfor %}
+                {% else %}<span class="est {% if a.estado == 'CORREGIDA' %}est-semana{% else %}est-ok{% endif %}">{{ a.get_estado_display }}</span>{% endif %}
+              </div></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% else %}
+          <div class="detalle" style="padding:12px 4px">No hay cargas de combustible con estos filtros.</div>
+        {% endif %}
+        <p class="detalle" style="margin:10px 0 0">Alertas automáticas: odómetro menor o igual al anterior, más litros que el tanque, rendimiento 25 % por debajo del normal del vehículo y comprobante repetido.</p>
+      </div>
+
+      {% if sel %}
+      <div class="seccion" style="min-width:0;border:2px solid var(--primary)">
+        <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
+          <h2 style="margin:0;font-size:17px;color:var(--primary-dark)">Carga del {{ sel.fecha|date:"d/m/Y H:i" }} · {{ sel.vehiculo.placa }}</h2>
+          <span class="detalle">{{ sel.conductor.nombre|default:"" }}</span>
+          <span class="est {% if sel.estado == 'PENDIENTE' %}est-mes{% elif sel.estado == 'CORREGIDA' %}est-semana{% else %}est-ok{% endif %}">{{ sel.get_estado_display }}</span>
+        </div>
+        {% if sel.anterior %}<div class="detalle" style="margin-top:6px">Lectura anterior de {{ sel.vehiculo.placa }}: <b>{{ sel.anterior.odometro|cantidad }} km</b> ({{ sel.anterior.fecha|date:"d/m/Y" }}).{% if sel.rendimiento_normal %} Rendimiento normal: {{ sel.rendimiento_normal|km }} km/l.{% endif %}</div>{% endif %}
+        {% for css, t in sel.alertas %}<div class="aviso {% if css == 'venc' %}error{% else %}warn{% endif %}" style="margin:8px 0 0">{{ t }}</div>{% endfor %}
+        <form method="post" action="{% url 'logistica_combustible_revisar' sel.id %}" style="margin-top:12px">
+          {% csrf_token %}
+          <input type="hidden" name="consulta" value="{{ consulta }}">
+          <div class="rejilla">
+            <label>Vehículo<select name="vehiculo">{% for v in vehiculos %}<option value="{{ v.id }}" {% if v.id == sel.vehiculo_id %}selected{% endif %}>{{ v.placa }}</option>{% endfor %}</select></label>
+            <label>Odómetro (km)<input type="text" inputmode="numeric" name="odometro" value="{{ sel.odometro }}" required></label>
+            <label>Litros<input type="text" inputmode="decimal" name="litros" value="{{ sel.litros|plano }}" required></label>
+            <label>Monto C$<input type="text" inputmode="decimal" name="monto" value="{{ sel.monto|plano }}" required></label>
+            <label>N° comprobante<input type="text" name="comprobante" value="{{ sel.comprobante }}" maxlength="40"></label>
+            <label>Estación<input type="text" name="estacion" value="{{ sel.estacion }}" maxlength="80"></label>
+            <label>Tarjeta de flota<select name="tarjeta"><option value="">—</option>{% for t in tarjetas %}<option value="{{ t.id }}" {% if t.id == sel.tarjeta_id %}selected{% endif %}>•••• {{ t.ultimos4 }}{% if t.vehiculo %} ({{ t.vehiculo.placa }}){% endif %}</option>{% endfor %}{% if sel.tarjeta and not sel.tarjeta.activa %}<option value="{{ sel.tarjeta_id }}" selected>•••• {{ sel.tarjeta.ultimos4 }} (inactiva)</option>{% endif %}</select></label>
+          </div>
+          {% if sel.original and sel.estado == "CORREGIDA" %}
+            <div class="detalle" style="margin-top:8px">Lo que escribió el conductor: odómetro {{ sel.original.odometro }}, {{ sel.original.litros }} l, C$ {{ sel.original.monto }}{% if sel.original.comprobante %}, comprobante {{ sel.original.comprobante }}{% endif %}{% if sel.original.vehiculo != sel.vehiculo.placa %}, vehículo {{ sel.original.vehiculo }}{% endif %}.</div>
+          {% endif %}
+          <div style="margin-top:8px;font-size:13px">{% if sel.foto_id %}<a href="{% url 'logistica_archivo' sel.foto_id %}" target="_blank" rel="noopener">Ver foto del comprobante</a>{% else %}<span class="vacio">Sin foto del comprobante</span>{% endif %}</div>
+          <label class="detalle" style="display:block;margin-top:10px">Nota de la corrección (opcional)
+            <input type="text" name="nota" value="{{ sel.nota_revision }}" maxlength="200" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:14px;margin-top:4px">
+          </label>
+          <div class="acciones">
+            <button type="submit" class="btn-azul">{% if sel.estado == "PENDIENTE" %}Guardar y marcar revisada{% else %}Guardar corrección{% endif %}</button>
+          </div>
+          <p class="detalle" style="margin:8px 0 0">Si cambias algún dato queda como "Corregida", con lo que escribió el conductor, quién corrigió y cuándo.{% if sel.revisado_por %} Última revisión: {{ sel.revisado_por.get_username }}, {{ sel.revisado_en|date:"d/m/Y H:i" }}.{% endif %}</p>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

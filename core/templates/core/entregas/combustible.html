@@ -1,0 +1,143 @@
+{% extends "core/entregas/base.html" %}
+{% load formato %}
+{% block titulo %}Combustible · Carga #{{ carga.id }}{% endblock %}
+
+{% block header %}
+<header class="app-header">
+  <div class="titulo">
+    <a class="btn-back" href="{% url 'entregas_lista' carga.id %}" title="Volver a la carga" aria-label="Volver a la carga">&#8592;</a>
+    Carga de combustible
+  </div>
+  <div class="subtitulo">{{ conductor.nombre|default:"Sin conductor" }} · Carga #{{ carga.id }}</div>
+</header>
+{% endblock %}
+
+{% block content %}
+<style>
+  .fcomb { display:flex; flex-direction:column; gap:14px; }
+  .fcomb label { display:flex; flex-direction:column; gap:5px; font-size:13px; font-weight:600; color:var(--primary-dark); }
+  .fcomb input, .fcomb select { font-family:inherit; font-size:17px; padding:11px 12px; border:1px solid var(--border); border-radius:8px; color:var(--text); background:#fff; width:100%; box-sizing:border-box; }
+  .fcomb .ayuda { font-size:12.5px; font-weight:500; color:var(--muted); }
+  .fcomb .dos-col { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .foto-btn { min-height:52px; border:1.5px dashed #E97324; background:#FFF8F2; color:#8A3F0E; border-radius:8px; font-family:inherit; font-size:15px; font-weight:700; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .guardar { min-height:52px; border:0; border-radius:10px; background:var(--primary); color:#fff; font-family:inherit; font-size:17px; font-weight:700; cursor:pointer; }
+  .guardar[disabled] { opacity:.6; }
+  .reciente { display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid #eee; font-size:14px; }
+  .reciente:last-child { border-bottom:0; }
+  .b { display:inline-block; padding:2px 9px; border-radius:11px; font-size:11.5px; font-weight:700; white-space:nowrap; }
+</style>
+
+{% include "core/entregas/_aviso_licencia.html" %}
+{% if messages %}{% for m in messages %}<div class="aviso ok">{{ m }}</div>{% endfor %}{% endif %}
+{% if error %}<div class="aviso error">{{ error }}</div>{% endif %}
+
+<form method="post" enctype="multipart/form-data" class="fcomb" id="formComb">
+  {% csrf_token %}
+  <label>Vehículo
+    <select name="vehiculo" id="vehiculo" required>
+      {% if not vehiculo_id %}<option value="">Elige el vehículo</option>{% endif %}
+      {% for v in vehiculos %}<option value="{{ v.id }}" {% if v.id == vehiculo_id %}selected{% endif %}>{{ v.placa }}{% if v.descripcion %} · {{ v.descripcion }}{% endif %}</option>{% endfor %}
+    </select>
+    {% if carga.vehiculo_id %}<span class="ayuda">Viene puesto el de tu carga de hoy.</span>{% endif %}
+  </label>
+  <label>Odómetro (km)
+    <input type="text" inputmode="numeric" name="odometro" id="odometro" value="{{ datos.odometro|default:'' }}" autocomplete="off" required>
+    <span class="ayuda" id="lectura"></span>
+  </label>
+  <div class="dos-col">
+    <label>Litros<input type="text" inputmode="decimal" name="litros" value="{{ datos.litros|default:'' }}" autocomplete="off" required></label>
+    <label>Monto C$<input type="text" inputmode="decimal" name="monto" value="{{ datos.monto|default:'' }}" autocomplete="off" required></label>
+  </div>
+  <label>Estación<input type="text" name="estacion" maxlength="80" value="{{ datos.estacion|default:'' }}"></label>
+  <label>N° del comprobante<input type="text" name="comprobante" maxlength="40" value="{{ datos.comprobante|default:'' }}" inputmode="numeric"></label>
+  <label>Tarjeta de flota
+    <select name="tarjeta" id="tarjeta">
+      <option value="">Sin tarjeta</option>
+      {% for t in tarjetas %}<option value="{{ t.id }}">•••• {{ t.ultimos4 }}{% if t.vehiculo %} ({{ t.vehiculo.placa }}){% endif %}</option>{% endfor %}
+    </select>
+  </label>
+  <div>
+    <label for="foto" class="foto-btn" id="fotoBtn">Tomar foto del comprobante</label>
+    <input type="file" name="foto" id="foto" accept="image/*" capture="environment" style="position:absolute;left:-9999px">
+    <span class="ayuda" style="display:block;margin-top:5px;font-size:12.5px;color:var(--muted)" id="fotoAyuda">Ayuda a logística a revisar. Opcional.</span>
+  </div>
+  <button type="submit" class="guardar" id="guardar">Guardar carga</button>
+</form>
+
+<h3 style="font-size:15px; color:var(--primary-dark); margin:22px 0 8px;">Mis últimas cargas</h3>
+{% if recientes %}
+<div style="background:#fff; border:1px solid var(--border); border-radius:10px;">
+  {% for r in recientes %}
+  <div class="reciente">
+    <div style="flex:1">{{ r.fecha|date:"d/m" }} · {{ r.vehiculo.placa }} · {{ r.litros|km }} l</div>
+    {% if r.estado == "PENDIENTE" %}<span class="b" style="background:#FFF1C9;color:#6B4E00">Por revisar</span>{% elif r.estado == "CORREGIDA" %}<span class="b" style="background:#FBE3D2;color:#8A3F0E">Corregida</span>{% else %}<span class="b" style="background:#E6EFD9;color:#3D5419">Revisada</span>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="detalle-muted">Todavía no has registrado cargas de combustible.</p>
+{% endif %}
+<p class="detalle-muted" style="margin-top:8px;">Después de guardar ya no puedes cambiarla; si te equivocaste, avisa a logística.</p>
+{{ lecturas|json_script:"lecturas" }}
+{{ tarjeta_por_vehiculo|json_script:"tarjetaPorVehiculo" }}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var lecturas = JSON.parse(document.getElementById("lecturas").textContent);
+  var tarjetas = JSON.parse(document.getElementById("tarjetaPorVehiculo").textContent);
+  var vehiculo = document.getElementById("vehiculo");
+  var odometro = document.getElementById("odometro");
+  var lectura = document.getElementById("lectura");
+  var tarjeta = document.getElementById("tarjeta");
+  function num(t) { return parseInt(String(t || "").replace(/[^0-9]/g, ""), 10); }
+  function fmt(n) { return n.toLocaleString("en-US"); }
+  function actualizar() {
+    var l = lecturas[vehiculo.value];
+    if (!l) { lectura.textContent = "Primera carga registrada de este vehículo."; return; }
+    var texto = "Última lectura: " + fmt(l.odometro) + " km el " + l.fecha + ".";
+    var n = num(odometro.value);
+    if (!isNaN(n)) {
+      var km = n - l.odometro;
+      texto += km > 0 ? " Recorridos: " + fmt(km) + " km." : " Revisa: es menor o igual a la anterior.";
+    }
+    lectura.textContent = texto;
+  }
+  function elegirTarjeta() {
+    var t = tarjetas[vehiculo.value];
+    if (t) tarjeta.value = String(t);
+  }
+  vehiculo.addEventListener("change", function () { elegirTarjeta(); actualizar(); });
+  odometro.addEventListener("input", actualizar);
+  elegirTarjeta(); actualizar();
+
+  // Reduce la foto en el celular antes de subirla (máx. 1600 px, JPEG).
+  var foto = document.getElementById("foto");
+  var form = document.getElementById("formComb");
+  var ayuda = document.getElementById("fotoAyuda");
+  var boton = document.getElementById("fotoBtn");
+  foto.addEventListener("change", function () {
+    var archivo = foto.files && foto.files[0];
+    if (!archivo) return;
+    boton.textContent = "Foto lista · cambiar";
+    ayuda.textContent = archivo.name;
+    if (!window.createImageBitmap || !window.DataTransfer || !/^image\//.test(archivo.type)) return;
+    createImageBitmap(archivo).then(function (img) {
+      var escala = Math.min(1, 1600 / Math.max(img.width, img.height));
+      var c = document.createElement("canvas");
+      c.width = Math.round(img.width * escala); c.height = Math.round(img.height * escala);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      c.toBlob(function (blob) {
+        if (!blob) return;
+        var dt = new DataTransfer();
+        dt.items.add(new File([blob], "comprobante.jpg", { type: "image/jpeg" }));
+        foto.files = dt.files;
+        ayuda.textContent = "Foto lista (" + Math.round(blob.size / 1024) + " KB).";
+      }, "image/jpeg", 0.8);
+    }).catch(function () {});
+  });
+  form.addEventListener("submit", function () { document.getElementById("guardar").disabled = true; });
+})();
+</script>
+{% endblock %}

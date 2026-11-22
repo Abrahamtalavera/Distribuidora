@@ -142,6 +142,20 @@
             {% endfor %}
           </table>
 
+        {% elif a.clave == "documentos_flota" %}
+          <table>
+            <tr><th>Documento</th><th>De</th><th>Vence</th><th>Estado</th></tr>
+            {% for f in a.filas %}
+            <tr>
+              <td>{{ f.doc.tipo.nombre }}{% if f.doc.numero %} · {{ f.doc.numero }}{% endif %}</td>
+              <td>{% if f.doc.vehiculo %}{{ f.doc.vehiculo.placa }}{% if f.doc.vehiculo.descripcion %} · {{ f.doc.vehiculo.descripcion }}{% endif %}{% else %}{{ f.doc.conductor.nombre }} (conductor){% endif %}</td>
+              <td>{{ f.doc.fecha_vencimiento|date:"d/m/Y" }}</td>
+              <td>{{ f.estado.texto }}</td>
+            </tr>
+            {% endfor %}
+          </table>
+          {% if perms.core.gestionar_flota %}<div style="margin-top:8px"><a href="{% url 'logistica_vencimientos' %}">Ver vencimientos en Logística</a></div>{% endif %}
+
         {% elif a.clave == "cartera_vencida" %}
           <table>
             <tr><th>Factura</th><th>Cliente</th><th>Venció</th><th class="r">Días vencida</th><th class="r">Saldo</th></tr>

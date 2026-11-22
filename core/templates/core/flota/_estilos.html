@@ -1,0 +1,34 @@
+{% comment %}Cambio #39: estilos comunes de las pantallas de logística.{% endcomment %}
+<style>
+  .desk { max-width:1320px; }
+  .pestanas { display:flex; gap:2px; background:var(--primary-dark); padding:0 20px; overflow-x:auto; }
+  .pestanas a { color:#D2D4F0; text-decoration:none; font-size:13px; font-weight:600; padding:10px 14px; border-bottom:3px solid transparent; white-space:nowrap; }
+  .pestanas a:hover { color:#fff; }
+  .pestanas a.activa { color:#fff; border-bottom-color:var(--accent, #E97324); }
+  .dos { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); gap:16px; align-items:start; }
+  @media (max-width: 900px) { .dos { grid-template-columns:1fr; } }
+  .est { display:inline-block; font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:10px; white-space:nowrap; }
+  .est-venc { background:#F8E1E1; color:#8E1516; }
+  .est-semana { background:#FBE3D2; color:#8A3F0E; }
+  .est-mes { background:#FFF1C9; color:#6B4E00; }
+  .est-dosmeses { background:#E8EAF7; color:#2C318C; }
+  .est-ok { background:#E6EFD9; color:#3D5419; }
+  .est-gris { background:#EFEFF3; color:#55566A; }
+  .vacio { color:var(--muted); font-style:italic; }
+  tr.sel td { background:var(--accent-light); }
+  .rejilla { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px 12px; }
+  .rejilla label, .form-linea label { display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.02em; }
+  .rejilla input, .rejilla select, .form-linea input, .form-linea select { padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:14px; background:#fff; min-height:38px; text-transform:none; letter-spacing:0; color:var(--text); }
+  .form-linea { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; padding:12px 14px; background:#F6F6FA; border:1px solid var(--border); border-radius:10px; margin-bottom:12px; }
+  .form-linea button, .btn-azul { min-height:38px; padding:0 18px; border:0; background:var(--primary); color:#fff; border-radius:6px; font-weight:700; cursor:pointer; font-family:inherit; font-size:14px; text-decoration:none; display:inline-flex; align-items:center; }
+  .sub-tit { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--accent, #E97324); margin:16px 0 8px; font-weight:700; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; }
+  .chip { display:inline-flex; align-items:center; min-height:36px; padding:0 14px; border-radius:18px; border:1px solid var(--border); background:#fff; color:var(--text); font-size:13px; text-decoration:none; }
+  .chip.activo { background:var(--primary); border-color:var(--primary); color:#fff; font-weight:600; }
+  .tarjetas { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; margin-bottom:12px; }
+  .tarjeta { border:1px solid var(--border); border-radius:10px; padding:10px 12px; background:#fff; }
+  .tarjeta span { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+  .tarjeta b { display:block; font-size:22px; color:var(--primary-dark); }
+  .tarjeta small { color:var(--muted); font-size:12px; }
+  .alertas-fila { display:flex; flex-wrap:wrap; gap:4px; }
+</style>

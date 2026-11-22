@@ -74,3 +74,18 @@ body.login { background-image: url("patron_maya.svg"); background-size: 150px au
 body.login #header { justify-content: center; }
 body.login #header #site-name a { flex-direction: column; gap: 4px; }
 body.login #header #site-name img { height: 64px; }
+
+/* Cambio #39: bloques del inicio del admin (Distribución / Flota / Configuración) */
+.sm-bloque {
+  font-family: "Baloo 2", system-ui, sans-serif; font-size: 17px; font-weight: 700; letter-spacing: .06em;
+  margin: 22px 0 8px; padding: 0 0 4px; border-bottom: 3px solid var(--primary); color: var(--primary);
+  background: none; text-transform: none;
+}
+#content-main > .sm-bloque:first-of-type, #nav-sidebar .sm-bloque:first-of-type { margin-top: 4px; }
+.sm-bloque-flota { color: #4F6B22; border-bottom-color: #4F6B22; }
+.sm-bloque-configuracion { color: #55566A; border-bottom-color: #9C9EB8; }
+.sm-grupo-flota caption { background: #4F6B22 !important; }
+.sm-grupo-configuracion caption { background: #55566A !important; }
+#nav-sidebar .sm-bloque { font-size: 13px; margin: 14px 0 6px; padding-left: 4px; }
+html[data-theme="dark"] .sm-bloque { color: #C9CCF6; }
+html[data-theme="dark"] .sm-bloque-flota { color: #B9D38F; }

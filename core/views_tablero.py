@@ -68,6 +68,9 @@ def tablero_view(request):
     contexto["dia_siguiente"] = dia.fromordinal(dia.toordinal() + 1)
     contexto["enlaces_admin"] = request.user.is_staff
     contexto["pestana"] = "dia"
+    from core.avisos_flota import disparar_si_toca
+
+    disparar_si_toca()  # Cambio #39: correo diario de vencimientos, si toca
     return render(request, "core/tablero/tablero.html", contexto)
 
 

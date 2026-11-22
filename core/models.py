@@ -77,8 +77,30 @@ class Vehiculo(models.Model):
             "paquetes y costo (Cambio #18)."
         ),
     )
+    # Cambio #39 (flota): datos del vehículo. Todos opcionales; logística
+    # los llena después.
+    TIPO_CHOICES = [
+        ("CAMION", "Camión"),
+        ("PANEL", "Panel"),
+        ("CAMIONETA", "Camioneta"),
+        ("MOTO", "Moto"),
+        ("OTRO", "Otro"),
+    ]
+    COMBUSTIBLE_CHOICES = [("DIESEL", "Diésel"), ("GASOLINA", "Gasolina")]
+    PROPIEDAD_CHOICES = [("PROPIO", "Propio"), ("ALQUILADO", "Alquilado"), ("TERCERO", "De tercero")]
+    marca = models.CharField(max_length=60, blank=True)
+    modelo = models.CharField(max_length=60, blank=True)
+    anio = models.PositiveSmallIntegerField("Año", null=True, blank=True)
+    tipo = models.CharField(max_length=12, choices=TIPO_CHOICES, blank=True)
+    combustible = models.CharField(max_length=10, choices=COMBUSTIBLE_CHOICES, blank=True)
+    capacidad_tanque = models.DecimalField(
+        "Capacidad del tanque (litros)", max_digits=7, decimal_places=1, null=True, blank=True
+    )
+    capacidad_carga = models.CharField("Capacidad de carga", max_length=60, blank=True)
+    propiedad = models.CharField(max_length=10, choices=PROPIEDAD_CHOICES, blank=True)
 
     class Meta:
+        verbose_name = "Vehículo"
         verbose_name_plural = "Vehículos"
 
     def __str__(self):
@@ -1209,3 +1231,188 @@ class DatosImpresionDevolucion(models.Model):
 
     def __str__(self):
         return f"{self.get_tipo_display()} #{self.objeto_id} · {self.numero_fisico or 's/n'}"
+
+
+
+# --- Cambio #39: flota (documentos con vencimiento y combustible) -----------
+
+
+class Conductor(Vendedor):
+    """Los repartidores vistos desde flota (licencias). Mismo registro que Vendedor."""
+
+    class Meta:
+        proxy = True
+        verbose_name = "Conductor"
+        verbose_name_plural = "Conductores y licencias"
+
+
+class ArchivoFlota(models.Model):
+    """
+    Foto o PDF de un documento o de un comprobante de combustible. Se guarda
+    en la base de datos porque el disco del servidor (Railway) se borra en
+    cada despliegue. Las fotos llegan reducidas desde el celular.
+    """
+
+    nombre = models.CharField(max_length=120)
+    tipo_contenido = models.CharField(max_length=80)
+    contenido = models.BinaryField()
+    tamano = models.PositiveIntegerField(default=0)
+    subido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    subido_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Archivo de flota"
+        verbose_name_plural = "Archivos de flota"
+
+    def __str__(self):
+        return self.nombre
+
+
+class TipoDocumentoFlota(models.Model):
+    APLICA_CHOICES = [("VEHICULO", "Vehículo"), ("CONDUCTOR", "Conductor")]
+    nombre = models.CharField(max_length=80)
+    aplica_a = models.CharField(max_length=10, choices=APLICA_CHOICES)
+    activo = models.BooleanField(default=True)
+    orden = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        verbose_name = "Tipo de documento"
+        verbose_name_plural = "Tipos de documento"
+        ordering = ["aplica_a", "orden", "nombre"]
+        constraints = [
+            models.UniqueConstraint(fields=["nombre", "aplica_a"], name="tipo_documento_flota_unico")
+        ]
+
+    def __str__(self):
+        return f"{self.nombre} ({self.get_aplica_a_display().lower()})"
+
+
+class DocumentoFlota(models.Model):
+    """
+    Documento con vencimiento de un vehículo o de un conductor. Al renovarlo
+    se crea uno nuevo y el anterior queda como historial (vigente=False).
+    """
+
+    tipo = models.ForeignKey(TipoDocumentoFlota, on_delete=models.PROTECT, related_name="documentos")
+    vehiculo = models.ForeignKey(
+        Vehiculo, null=True, blank=True, on_delete=models.CASCADE, related_name="documentos"
+    )
+    conductor = models.ForeignKey(
+        Vendedor, null=True, blank=True, on_delete=models.CASCADE, related_name="documentos_flota"
+    )
+    numero = models.CharField("Número", max_length=60, blank=True)
+    fecha_vencimiento = models.DateField("Vence", null=True, blank=True)
+    archivo = models.ForeignKey(
+        ArchivoFlota, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    vigente = models.BooleanField(default=True)
+    notas = models.CharField(max_length=200, blank=True)
+    # Control de avisos por correo (2 meses, 1 mes y semanal).
+    ultimo_aviso_en = models.DateField(null=True, blank=True, editable=False)
+    ultimo_aviso_dias = models.IntegerField(null=True, blank=True, editable=False)
+    registrado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    registrado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Documento de flota"
+        verbose_name_plural = "Documentos de vehículos y conductores"
+        ordering = ["fecha_vencimiento"]
+        permissions = [("gestionar_flota", "Puede gestionar la flota (logística)")]
+
+    def __str__(self):
+        return f"{self.tipo.nombre} · {self.dueno_texto}"
+
+    @property
+    def dueno_texto(self):
+        if self.vehiculo_id:
+            return self.vehiculo.placa
+        return self.conductor.nombre if self.conductor_id else "—"
+
+
+class TarjetaFlota(models.Model):
+    ultimos4 = models.CharField("Últimos 4 dígitos", max_length=4)
+    vehiculo = models.ForeignKey(
+        Vehiculo, null=True, blank=True, on_delete=models.SET_NULL, related_name="tarjetas"
+    )
+    activa = models.BooleanField(default=True)
+    notas = models.CharField(max_length=120, blank=True)
+
+    class Meta:
+        verbose_name = "Tarjeta de flota"
+        verbose_name_plural = "Tarjetas de flota"
+        ordering = ["ultimos4"]
+
+    def __str__(self):
+        return f"•••• {self.ultimos4}"
+
+
+class AbastecimientoCombustible(models.Model):
+    """Una carga de combustible. La registra el conductor; logística la revisa."""
+
+    ESTADO_CHOICES = [
+        ("PENDIENTE", "Por revisar"),
+        ("REVISADA", "Revisada"),
+        ("CORREGIDA", "Corregida"),
+    ]
+    vehiculo = models.ForeignKey(Vehiculo, on_delete=models.PROTECT, related_name="abastecimientos")
+    conductor = models.ForeignKey(
+        Vendedor, null=True, blank=True, on_delete=models.SET_NULL, related_name="abastecimientos"
+    )
+    carga = models.ForeignKey(
+        Carga, null=True, blank=True, on_delete=models.SET_NULL, related_name="abastecimientos"
+    )
+    fecha = models.DateTimeField(default=timezone.now)
+    odometro = models.PositiveIntegerField("Odómetro (km)")
+    litros = models.DecimalField(max_digits=8, decimal_places=2)
+    monto = models.DecimalField("Monto C$", max_digits=12, decimal_places=2)
+    estacion = models.CharField("Estación", max_length=80, blank=True)
+    comprobante = models.CharField("N° comprobante", max_length=40, blank=True)
+    tarjeta = models.ForeignKey(
+        TarjetaFlota, null=True, blank=True, on_delete=models.SET_NULL, related_name="abastecimientos"
+    )
+    foto = models.ForeignKey(
+        ArchivoFlota, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    estado = models.CharField(max_length=10, choices=ESTADO_CHOICES, default="PENDIENTE")
+    original = models.JSONField(
+        default=dict, blank=True, help_text="Lo que escribió el conductor, antes de correcciones."
+    )
+    registrado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    registrado_en = models.DateTimeField(auto_now_add=True)
+    revisado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    revisado_en = models.DateTimeField(null=True, blank=True)
+    nota_revision = models.CharField("Nota de la corrección", max_length=200, blank=True)
+
+    class Meta:
+        verbose_name = "Abastecimiento de combustible"
+        verbose_name_plural = "Abastecimientos de combustible"
+        ordering = ["-fecha", "-id"]
+
+    def __str__(self):
+        return f"{self.vehiculo.placa} · {timezone.localtime(self.fecha):%d/%m/%Y} · {self.litros} l"
+
+
+class EjecucionAvisosFlota(models.Model):
+    """Un registro por día en que se revisaron y enviaron los avisos por correo."""
+
+    fecha = models.DateField(unique=True)
+    ejecutado_en = models.DateTimeField(auto_now_add=True)
+    documentos = models.PositiveIntegerField(default=0)
+    enviado = models.BooleanField(default=False)
+    detalle = models.CharField(max_length=300, blank=True)
+
+    class Meta:
+        verbose_name = "Envío de avisos de flota"
+        verbose_name_plural = "Envíos de avisos de flota"
+        ordering = ["-fecha"]
+
+    def __str__(self):
+        return f"{self.fecha:%d/%m/%Y} · {self.documentos} documentos"

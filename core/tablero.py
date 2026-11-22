@@ -314,6 +314,20 @@ def alerta_cartera_vencida(hoy):
     )
 
 
+def alerta_documentos_flota(hoy):
+    """Cambio #39: documentos de flota vencidos o que vencen en menos de 2 meses."""
+    from core.flota import resumen_atencion
+
+    r = resumen_atencion(hoy)
+    return _alerta(
+        "documentos_flota",
+        "Documentos de flota por vencer",
+        "Vehículos y conductores con documentos vencidos o que vencen en menos de 2 meses.",
+        r["filas"],
+        nivel="error" if r["vencidos"] else "warn",
+    )
+
+
 def alertas(hoy):
     return [
         alerta_facturas_atrasadas(hoy),
@@ -323,6 +337,7 @@ def alertas(hoy):
         alerta_cargas_en_ruta_atrasadas(hoy),
         alerta_cargas_planeadas_atrasadas(hoy),
         alerta_cartera_vencida(hoy),
+        alerta_documentos_flota(hoy),
     ]
 
 

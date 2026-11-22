@@ -1,4 +1,5 @@
 {% extends "admin/index.html" %}
+{% load flota_tags %}
 {% comment %}Cambios #19, #21 y #34: accesos directos desde el inicio del admin.{% endcomment %}
 {% block content %}
 {% if perms.core.ver_tablero %}
@@ -20,7 +21,7 @@
   </div>
 {% endif %}
 {% if perms.core.revisar_devoluciones_cartera %}
-  <div style="margin:0 0 20px;padding:14px 18px;border:1px solid var(--hairline-color);border-left:4px solid var(--accent);border-radius:6px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+  <div style="margin:0 0 12px;padding:14px 18px;border:1px solid var(--hairline-color);border-left:4px solid var(--accent);border-radius:6px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
     <div>
       <strong style="font-size:15px;">Consulta de cartera</strong>
       <div style="color:var(--body-quiet-color);font-size:13px;margin-top:3px;">Cargas con lo cobrado y por cobrar (efectivo y crédito) y revisión de devoluciones.</div>
@@ -28,6 +29,23 @@
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <a href="{% url 'cartera_cargas' %}" class="button" style="padding:8px 16px;">Consulta de cargas</a>
       <a href="{% url 'cartera_lista' %}" class="button" style="padding:8px 16px;">Revisión de devoluciones</a>
+    </div>
+  </div>
+{% endif %}
+{% if perms.core.gestionar_flota %}
+  {% resumen_flota as rf %}
+  <div style="margin:0 0 20px;padding:14px 18px;border:1px solid var(--hairline-color);border-left:4px solid #4F6B22;border-radius:6px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+    <div>
+      <strong style="font-size:15px;">Logística — Flota</strong>
+      <div style="color:var(--body-quiet-color);font-size:13px;margin-top:3px;">
+        {% if rf.documentos %}<b style="color:#B71C1D">{{ rf.documentos }} documento{{ rf.documentos|pluralize }}</b> por vencer{% if rf.vencidos %} ({{ rf.vencidos }} vencido{{ rf.vencidos|pluralize }}){% endif %}{% else %}Documentos al día{% endif %}
+        · {% if rf.por_revisar %}<b style="color:#AE4627">{{ rf.por_revisar }} carga{{ rf.por_revisar|pluralize }} de combustible</b> por revisar{% else %}combustible revisado{% endif %}.
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <a href="{% url 'logistica_flota' %}" class="button" style="padding:8px 16px;">Flota</a>
+      <a href="{% url 'logistica_vencimientos' %}" class="button" style="padding:8px 16px;">Vencimientos</a>
+      <a href="{% url 'logistica_combustible' %}" class="button" style="padding:8px 16px;">Combustible</a>
     </div>
   </div>
 {% endif %}
