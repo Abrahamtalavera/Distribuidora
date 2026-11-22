@@ -1,0 +1,41 @@
+{% extends "core/entregas/base.html" %}
+{% comment %}Cambio #39.1: acceso del conductor solo para registrar combustible (sin carga).{% endcomment %}
+{% block titulo %}Combustible{% endblock %}
+
+{% block header %}
+<header class="app-header">
+  <div class="titulo">Carga de combustible</div>
+  <div class="subtitulo">Elige tu nombre y escribe tu PIN</div>
+</header>
+{% endblock %}
+
+{% block content %}
+{% load static %}
+<div style="text-align:center; padding:22px 0 14px;">
+  <img src="{% static 'core/marca/logo_sol_maya_color.png' %}" alt="Sol Maya" style="width:150px; height:auto;">
+</div>
+<form method="post" id="form-acceso">
+  {% csrf_token %}
+  <div class="seccion">
+    <div class="campo-form">
+      <label for="conductor">Tu nombre</label>
+      <select name="conductor" id="conductor" required style="width:100%;font-size:17px;padding:11px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;font-family:inherit;">
+        <option value="">Elige tu nombre</option>
+        {% for c in conductores %}<option value="{{ c.id }}" {% if elegido == c.id|stringformat:"s" %}selected{% endif %}>{{ c.nombre }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="campo-form">
+      <label for="pin">Tu PIN</label>
+      <input type="password" name="pin" id="pin" placeholder="••••" inputmode="numeric" maxlength="10" required autocomplete="current-password">
+    </div>
+    {% if error %}<div class="campo-form" style="color:var(--danger); font-size:13px;" role="alert">{{ error }}</div>{% endif %}
+  </div>
+  <p class="detalle-muted" style="text-align:center;">Es el mismo PIN que usas para las entregas. No necesitas código de carga.</p>
+</form>
+{% endblock %}
+
+{% block barra_inferior %}
+<div class="barra-inferior">
+  <button class="btn-guardar" type="submit" form="form-acceso">Entrar</button>
+</div>
+{% endblock %}

@@ -269,3 +269,66 @@ class AdminAgrupadoTests(FlotaBase):
         # La página de una app sigue funcionando.
         self.assertEqual(self.client.get(reverse("admin:app_list", args=["core"])).status_code, 200)
         self.assertEqual(self.client.get(reverse("admin:core_conductor_changelist")).status_code, 200)
+
+
+class CombustibleSinCargaTests(FlotaBase):
+    """Cambio #39.1: acceso de combustible solo con nombre + PIN y registro por logística."""
+
+    def entrar(self, pin="4321"):
+        return self.client.post(reverse("combustible_acceso"), {"conductor": self.juan.id, "pin": pin})
+
+    def test_conductor_registra_sin_carga(self):
+        self.assertRedirects(self.client.get(reverse("combustible_registrar")), reverse("combustible_acceso"))
+        r = self.entrar()
+        self.assertRedirects(r, reverse("combustible_registrar"))
+        r = self.client.get(reverse("combustible_registrar"))
+        self.assertContains(r, "Sin carga asociada")
+        self.client.post(reverse("combustible_registrar"), {
+            "vehiculo": self.camion.id, "odometro": "5000", "litros": "40", "monto": "1700",
+        })
+        a = AbastecimientoCombustible.objects.get()
+        self.assertEqual((a.carga, a.conductor, a.origen, a.estado), (None, self.juan, "CONDUCTOR", "PENDIENTE"))
+        # Al día siguiente la sesión ya no vale.
+        sesion = self.client.session
+        sesion["combustible_conductor"] = {"id": self.juan.id, "dia": "2000-01-01"}
+        sesion.save()
+        self.assertRedirects(self.client.get(reverse("combustible_registrar")), reverse("combustible_acceso"))
+
+    def test_bloqueo_por_intentos(self):
+        for _ in range(4):
+            self.assertContains(self.entrar("0000"), "PIN incorrecto")
+        self.assertContains(self.entrar("0000"), "Demasiados intentos")
+        # Ni con el PIN correcto entra mientras dura el bloqueo.
+        self.assertContains(self.entrar(), "Demasiados intentos")
+        self.juan.refresh_from_db()
+        self.juan.pin_bloqueado_hasta = timezone.now() - timedelta(minutes=1)
+        self.juan.save()
+        self.assertRedirects(self.entrar(), reverse("combustible_registrar"))
+        self.juan.refresh_from_db()
+        self.assertIsNone(self.juan.pin_bloqueado_hasta)
+
+    def test_logistica_registra_y_queda_revisada(self):
+        self.client.force_login(self.logistica)
+        r = self.client.get(reverse("logistica_combustible") + "?nuevo=1")
+        self.assertContains(r, "Registrar carga de combustible")
+        ayer = timezone.localtime() - timedelta(days=1)
+        self.client.post(reverse("logistica_combustible_nuevo"), {
+            "fecha": ayer.strftime("%Y-%m-%dT%H:%M"), "vehiculo": self.panel.id, "conductor": "",
+            "odometro": "1200", "litros": "30", "monto": "1,250.00", "nota": "Comprobante entregado",
+        })
+        a = AbastecimientoCombustible.objects.get()
+        self.assertEqual((a.origen, a.estado, a.revisado_por, a.conductor), ("LOGISTICA", "REVISADA", self.logistica, None))
+        self.assertEqual(timezone.localtime(a.fecha).date(), ayer.date())
+        r = self.client.get(reverse("logistica_combustible") + "?estado=todas&desde=" + ayer.date().isoformat())
+        self.assertContains(r, "Registrada por logística")
+        # Fecha futura no.
+        futuro = timezone.localtime() + timedelta(days=2)
+        r = self.client.post(reverse("logistica_combustible_nuevo"), {
+            "fecha": futuro.strftime("%Y-%m-%dT%H:%M"), "vehiculo": self.panel.id,
+            "odometro": "1300", "litros": "30", "monto": "1250",
+        }, follow=True)
+        self.assertContains(r, "no puede ser futura")
+        self.assertEqual(AbastecimientoCombustible.objects.count(), 1)
+        # Sin permiso de logística no registra.
+        self.client.force_login(self.otro)
+        self.assertEqual(self.client.post(reverse("logistica_combustible_nuevo"), {}).status_code, 403)

@@ -57,6 +57,10 @@ class Vendedor(models.Model):
             "Solo aplica a repartidores."
         ),
     )
+    # Cambio #39.1: bloqueo temporal del acceso de combustible (solo PIN)
+    # después de varios intentos fallidos.
+    pin_intentos_fallidos = models.PositiveSmallIntegerField(default=0, editable=False)
+    pin_bloqueado_hasta = models.DateTimeField(null=True, blank=True, editable=False)
 
     class Meta:
         verbose_name_plural = "Vendedores"
@@ -1378,6 +1382,12 @@ class AbastecimientoCombustible(models.Model):
         ArchivoFlota, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
     )
     estado = models.CharField(max_length=10, choices=ESTADO_CHOICES, default="PENDIENTE")
+    ORIGEN_CHOICES = [
+        ("CARGA", "Conductor, desde su carga"),
+        ("CONDUCTOR", "Conductor, acceso de combustible"),
+        ("LOGISTICA", "Logística"),
+    ]
+    origen = models.CharField(max_length=10, choices=ORIGEN_CHOICES, default="CARGA")
     original = models.JSONField(
         default=dict, blank=True, help_text="Lo que escribió el conductor, antes de correcciones."
     )

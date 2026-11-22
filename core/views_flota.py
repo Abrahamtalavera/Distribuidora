@@ -301,8 +301,14 @@ def logistica_combustible_view(request):
             seleccion = flota.anotar_abastecimientos([a])[0] if a else None
     elif f["estado"] == "PENDIENTE" and filas:
         seleccion = filas[0]
+    nuevo = request.GET.get("nuevo") == "1"
+    if nuevo:
+        seleccion = None
     contexto = _contexto_base(request, "combustible")
     contexto.update({
+        "nuevo": nuevo,
+        "previo": request.session.pop("combustible_nuevo", {}) if nuevo else {},
+        "ahora_local": timezone.localtime().strftime("%Y-%m-%dT%H:%M"),
         "filas": filas,
         "r": resumen,
         "recortado": recortado,
@@ -358,33 +364,31 @@ def logistica_archivo_view(request, archivo_id):
 # --- Conductor: registrar combustible desde el celular -----------------------
 
 
-@require_http_methods(["GET", "POST"])
-def entregas_combustible_view(request, carga_id):
-    from core.views_entregas import _carga_autorizada
-
-    carga = _carga_autorizada(request, carga_id)
-    if carga is None:
-        return redirect("entregas_acceso")
-    conductor = carga.conductor
+def _pantalla_combustible(request, *, conductor, carga, origen, volver_url, salir_url, url_post):
+    """Formulario de combustible del conductor (desde su carga o sin carga)."""
     vehiculos = Vehiculo.objects.filter(activo=True).order_by("placa")
     error = None
     datos = request.POST if request.method == "POST" else {}
     if request.method == "POST":
         try:
             ab = flota.registrar_abastecimiento(
-                request.POST, request.FILES, conductor=conductor, carga=carga,
+                request.POST, request.FILES, conductor=conductor, carga=carga, origen=origen,
                 usuario=request.user if request.user.is_authenticated else None,
             )
         except FlotaError as exc:
             error = str(exc)
         else:
             messages.success(request, f"Carga de combustible guardada: {ab.litros.normalize():f} litros en {ab.vehiculo.placa}.")
-            return redirect("entregas_combustible", carga_id=carga.id)
+            return redirect(url_post)
 
+    defecto = carga.vehiculo_id if carga else None
+    if not defecto and conductor:
+        ultima = AbastecimientoCombustible.objects.filter(conductor=conductor).order_by("-fecha", "-id").first()
+        defecto = ultima.vehiculo_id if ultima else None
     try:
-        vehiculo_id = int(datos.get("vehiculo") or 0) or carga.vehiculo_id
+        vehiculo_id = int(datos.get("vehiculo") or 0) or defecto
     except ValueError:
-        vehiculo_id = carga.vehiculo_id
+        vehiculo_id = defecto
     lecturas = {}
     for v in vehiculos:
         ultima = flota.ultima_lectura(v)
@@ -407,4 +411,91 @@ def entregas_combustible_view(request, carga_id):
         "datos": datos,
         "error": error,
         "aviso_licencia": flota.aviso_licencia(conductor),
+        "volver_url": volver_url,
+        "salir_url": salir_url,
     })
+
+
+@require_http_methods(["GET", "POST"])
+def entregas_combustible_view(request, carga_id):
+    from core.views_entregas import _carga_autorizada
+
+    carga = _carga_autorizada(request, carga_id)
+    if carga is None:
+        return redirect("entregas_acceso")
+    url = reverse("entregas_combustible", args=[carga.id])
+    return _pantalla_combustible(
+        request, conductor=carga.conductor, carga=carga, origen="CARGA",
+        volver_url=reverse("entregas_lista", args=[carga.id]), salir_url=None, url_post=url,
+    )
+
+
+# Cambio #39.1: acceso solo para combustible (nombre + PIN, sin carga).
+SESION_COMBUSTIBLE = "combustible_conductor"
+
+
+def _conductor_en_sesion(request):
+    datos = request.session.get(SESION_COMBUSTIBLE) or {}
+    if datos.get("dia") != timezone.localdate().isoformat():
+        return None
+    return Vendedor.objects.filter(pk=datos.get("id"), tipo="REPARTIDOR", activo=True).first()
+
+
+@require_http_methods(["GET", "POST"])
+def combustible_acceso_view(request):
+    if _conductor_en_sesion(request):
+        return redirect("combustible_registrar")
+    conductores = flota.conductores_activos()
+    error = None
+    elegido = request.POST.get("conductor") or ""
+    if request.method == "POST":
+        conductor = conductores.filter(pk=elegido).first() if elegido.isdigit() else None
+        if conductor is None:
+            error = "Elige tu nombre."
+        else:
+            ok, error = flota.verificar_pin(conductor, request.POST.get("pin"))
+            if ok:
+                request.session[SESION_COMBUSTIBLE] = {"id": conductor.id, "dia": timezone.localdate().isoformat()}
+                return redirect("combustible_registrar")
+    return render(request, "core/entregas/combustible_acceso.html", {
+        "conductores": conductores, "error": error, "elegido": elegido,
+    })
+
+
+@require_http_methods(["GET", "POST"])
+def combustible_registrar_view(request):
+    conductor = _conductor_en_sesion(request)
+    if conductor is None:
+        request.session.pop(SESION_COMBUSTIBLE, None)
+        return redirect("combustible_acceso")
+    url = reverse("combustible_registrar")
+    return _pantalla_combustible(
+        request, conductor=conductor, carga=None, origen="CONDUCTOR",
+        volver_url=None, salir_url=reverse("combustible_salir"), url_post=url,
+    )
+
+
+def combustible_salir_view(request):
+    request.session.pop(SESION_COMBUSTIBLE, None)
+    return redirect("combustible_acceso")
+
+
+@logistica_required
+@require_POST
+def logistica_combustible_nuevo_view(request):
+    """Cambio #39.1: logística registra una carga de combustible (queda revisada)."""
+    volver = request.POST.get("consulta") or ""
+    destino = f"{reverse('logistica_combustible')}?{volver}" if volver else reverse("logistica_combustible")
+    conductor = None
+    if request.POST.get("conductor"):
+        conductor = Vendedor.objects.filter(pk=request.POST.get("conductor"), tipo="REPARTIDOR").first()
+    try:
+        ab = flota.registrar_abastecimiento(
+            request.POST, request.FILES, conductor=conductor, origen="LOGISTICA", usuario=request.user,
+        )
+    except FlotaError as exc:
+        messages.error(request, str(exc))
+        request.session["combustible_nuevo"] = {k: v for k, v in request.POST.items() if k != "csrfmiddlewaretoken"}
+        return redirect(f"{destino}{'&' if volver else '?'}nuevo=1")
+    messages.success(request, f"Carga de {ab.vehiculo.placa} del {timezone.localtime(ab.fecha):%d/%m/%Y} registrada.")
+    return redirect(destino)

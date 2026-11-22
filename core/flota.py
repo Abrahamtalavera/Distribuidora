@@ -432,15 +432,78 @@ def _a_json(datos):
     }
 
 
-def registrar_abastecimiento(post, archivos=None, *, conductor=None, carga=None, usuario=None):
-    """Carga de combustible que registra el conductor (o logística)."""
-    datos = _datos_capturados(post, Vehiculo.objects.filter(activo=True))
-    foto = guardar_archivo((archivos or {}).get("foto"), usuario, solo_imagen=True)
+def _leer_fecha_hora(texto):
+    """Fecha y hora de un <input type=datetime-local> (hora de Managua)."""
+    from datetime import datetime
+
+    texto = (texto or "").strip()
+    if not texto:
+        return None
+    for formato in ("%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+        try:
+            valor = timezone.make_aware(datetime.strptime(texto, formato))
+        except ValueError:
+            continue
+        if valor > timezone.now() + timedelta(minutes=5):
+            raise FlotaError("La fecha de la carga no puede ser futura.")
+        return valor
+    raise FlotaError("La fecha de la carga no es válida.")
+
+
+def registrar_abastecimiento(post, archivos=None, *, conductor=None, carga=None, usuario=None, origen="CARGA"):
+    """
+    Carga de combustible. La registra el conductor (desde su carga o desde el
+    acceso de combustible, origen CARGA / CONDUCTOR) o logística (LOGISTICA:
+    puede poner la fecha y queda revisada de una vez).
+    """
+    de_logistica = origen == "LOGISTICA"
+    datos = _datos_capturados(post, Vehiculo.objects.all() if de_logistica else Vehiculo.objects.filter(activo=True))
+    fecha = _leer_fecha_hora(post.get("fecha")) if de_logistica else None
+    foto = guardar_archivo((archivos or {}).get("foto"), usuario, solo_imagen=not de_logistica)
+    usuario = usuario if usuario and usuario.is_authenticated else None
+    extra = {}
+    if de_logistica:
+        extra = {
+            "estado": "REVISADA", "revisado_por": usuario, "revisado_en": timezone.now(),
+            "nota_revision": (post.get("nota") or "").strip()[:200],
+        }
+    if fecha:
+        extra["fecha"] = fecha
     return AbastecimientoCombustible.objects.create(
         conductor=conductor, carga=carga, original=_a_json(datos), foto=foto,
-        registrado_por=usuario if usuario and usuario.is_authenticated else None,
-        **datos,
+        registrado_por=usuario, origen=origen, **datos, **extra,
     )
+
+
+INTENTOS_PIN = 5
+MINUTOS_BLOQUEO = 15
+
+
+def verificar_pin(conductor, pin):
+    """
+    Acceso de combustible: nombre + PIN. Tras 5 intentos fallidos el acceso
+    de ese conductor se bloquea 15 minutos. Devuelve (ok, mensaje).
+    """
+    import secrets
+
+    ahora = timezone.now()
+    if conductor.pin_bloqueado_hasta and conductor.pin_bloqueado_hasta > ahora:
+        minutos = max(1, int((conductor.pin_bloqueado_hasta - ahora).total_seconds() // 60) + 1)
+        return False, f"Demasiados intentos. Espera {minutos} minuto{'s' if minutos != 1 else ''} o pide ayuda a logística."
+    correcto = bool(conductor.pin_acceso) and secrets.compare_digest(conductor.pin_acceso, (pin or "").strip())
+    if correcto:
+        if conductor.pin_intentos_fallidos or conductor.pin_bloqueado_hasta:
+            conductor.pin_intentos_fallidos, conductor.pin_bloqueado_hasta = 0, None
+            conductor.save(update_fields=["pin_intentos_fallidos", "pin_bloqueado_hasta"])
+        return True, ""
+    conductor.pin_intentos_fallidos += 1
+    if conductor.pin_intentos_fallidos >= INTENTOS_PIN:
+        conductor.pin_intentos_fallidos = 0
+        conductor.pin_bloqueado_hasta = ahora + timedelta(minutes=MINUTOS_BLOQUEO)
+        conductor.save(update_fields=["pin_intentos_fallidos", "pin_bloqueado_hasta"])
+        return False, f"Demasiados intentos. Espera {MINUTOS_BLOQUEO} minutos o pide ayuda a logística."
+    conductor.save(update_fields=["pin_intentos_fallidos"])
+    return False, "PIN incorrecto."
 
 
 def revisar_abastecimiento(ab, post, usuario):
@@ -581,7 +644,7 @@ def excel_combustible(filas):
     titulos = [
         "Fecha", "Vehículo", "Conductor", "Odómetro", "Km recorridos", "Litros", "Monto C$",
         "Km/l", "Estación", "Comprobante", "Tarjeta", "Estado", "Alertas",
-        "Revisado por", "Nota de la corrección", "Original del conductor",
+        "Registrada por", "Revisado por", "Nota de la corrección", "Original del conductor",
     ]
     ws.append(titulos)
     for c in ws[1]:
@@ -589,7 +652,7 @@ def excel_combustible(filas):
         c.fill = PatternFill("solid", fgColor="2C318C")
     for f in filas:
         original = ""
-        if f.estado == "CORREGIDA" and f.original:
+        if f.estado == "CORREGIDA" and f.original and f.origen != "LOGISTICA":
             o = f.original
             original = f"Odómetro {o.get('odometro')}, {o.get('litros')} l, C$ {o.get('monto')}, comp. {o.get('comprobante') or '—'}"
         ws.append([
@@ -598,12 +661,13 @@ def excel_combustible(filas):
             float(f.rendimiento) if f.rendimiento else None, f.estacion, f.comprobante,
             f.tarjeta.ultimos4 if f.tarjeta else "", f.get_estado_display(),
             "; ".join(t for _, t in f.alertas),
+            f.get_origen_display(),
             f.revisado_por.get_username() if f.revisado_por else "", f.nota_revision, original,
         ])
     for fila in ws.iter_rows(min_row=2):
         fila[0].number_format = "DD/MM/YYYY HH:MM"
         fila[6].number_format = "#,##0.00"
-    for col, ancho in zip("ABCDEFGHIJKLMNOP", (17, 12, 22, 11, 13, 9, 12, 7, 22, 14, 9, 12, 34, 14, 30, 40)):
+    for col, ancho in zip("ABCDEFGHIJKLMNOPQ", (17, 12, 22, 11, 13, 9, 12, 7, 22, 14, 9, 12, 34, 30, 14, 30, 40)):
         ws.column_dimensions[col].width = ancho
     ws.freeze_panes = "A2"
     salida = BytesIO()

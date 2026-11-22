@@ -1,14 +1,15 @@
 {% extends "core/entregas/base.html" %}
 {% load formato %}
-{% block titulo %}Combustible · Carga #{{ carga.id }}{% endblock %}
+{% block titulo %}Combustible{% if carga %} · Carga #{{ carga.id }}{% endif %}{% endblock %}
 
 {% block header %}
 <header class="app-header">
   <div class="titulo">
-    <a class="btn-back" href="{% url 'entregas_lista' carga.id %}" title="Volver a la carga" aria-label="Volver a la carga">&#8592;</a>
+    {% if volver_url %}<a class="btn-back" href="{{ volver_url }}" title="Volver a la carga" aria-label="Volver a la carga">&#8592;</a>{% endif %}
     Carga de combustible
+    {% if salir_url %}<a class="btn-back" style="margin-left:auto;" href="{{ salir_url }}" title="Salir" aria-label="Salir">&#8594;</a>{% endif %}
   </div>
-  <div class="subtitulo">{{ conductor.nombre|default:"Sin conductor" }} · Carga #{{ carga.id }}</div>
+  <div class="subtitulo">{{ conductor.nombre|default:"Sin conductor" }}{% if carga %} · Carga #{{ carga.id }}{% else %} · Sin carga asociada{% endif %}</div>
 </header>
 {% endblock %}
 
@@ -38,7 +39,7 @@
       {% if not vehiculo_id %}<option value="">Elige el vehículo</option>{% endif %}
       {% for v in vehiculos %}<option value="{{ v.id }}" {% if v.id == vehiculo_id %}selected{% endif %}>{{ v.placa }}{% if v.descripcion %} · {{ v.descripcion }}{% endif %}</option>{% endfor %}
     </select>
-    {% if carga.vehiculo_id %}<span class="ayuda">Viene puesto el de tu carga de hoy.</span>{% endif %}
+    {% if carga.vehiculo_id %}<span class="ayuda">Viene puesto el de tu carga de hoy.</span>{% elif vehiculo_id %}<span class="ayuda">Viene puesto el de tu última carga de combustible; cámbialo si es otro.</span>{% endif %}
   </label>
   <label>Odómetro (km)
     <input type="text" inputmode="numeric" name="odometro" id="odometro" value="{{ datos.odometro|default:'' }}" autocomplete="off" required>

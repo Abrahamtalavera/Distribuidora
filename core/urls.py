@@ -145,4 +145,9 @@ urlpatterns = [
     path("logistica/combustible/<int:abastecimiento_id>/revisar/", views_flota.logistica_combustible_revisar_view, name="logistica_combustible_revisar"),
     path("logistica/archivo/<int:archivo_id>/", views_flota.logistica_archivo_view, name="logistica_archivo"),
     path("entregas/carga/<int:carga_id>/combustible/", views_flota.entregas_combustible_view, name="entregas_combustible"),
+    path("logistica/combustible/nuevo/", views_flota.logistica_combustible_nuevo_view, name="logistica_combustible_nuevo"),
+    # Cambio #39.1: acceso del conductor solo para combustible.
+    path("combustible/", views_flota.combustible_acceso_view, name="combustible_acceso"),
+    path("combustible/registrar/", views_flota.combustible_registrar_view, name="combustible_registrar"),
+    path("combustible/salir/", views_flota.combustible_salir_view, name="combustible_salir"),
 ]

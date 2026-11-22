@@ -26,6 +26,7 @@
           <div class="detalle">No hay repartidores activos.</div>
         {% endif %}
         <p class="detalle" style="margin:10px 0 0">Son los repartidores registrados en el admin. El aviso de la licencia les aparece en su pantalla de la app.</p>
+        <div class="aviso ok" style="margin:10px 0 0">Para registrar combustible sin carga, el conductor entra a <b>{{ request.scheme }}://{{ request.get_host }}{% url 'combustible_acceso' %}</b> con su nombre y su PIN.</div>
       </div>
       {% if sel %}
       <div class="seccion" style="min-width:0;border:2px solid var(--primary)">
