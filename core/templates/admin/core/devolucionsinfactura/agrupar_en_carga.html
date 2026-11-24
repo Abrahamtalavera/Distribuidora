@@ -15,6 +15,7 @@
       <li>
         {{ d.codigo_reporte }} — {{ d.sucursal }} —
         {{ d.get_estado_display }} — {{ d.total_unidades_estimado }} unidad{{ d.total_unidades_estimado|pluralize:"es" }} (est.)
+        {% if not d.puede_asignar %}— <b style="color:#ba2121;">No se asigna: {{ d.por_que_no }}</b>{% elif d.aviso_carga %}— <b style="color:#8a5200;">{{ d.aviso_carga }}</b>{% endif %}
       </li>
     {% endfor %}
   </ul>

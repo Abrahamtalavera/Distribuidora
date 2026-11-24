@@ -45,7 +45,7 @@
 
   <h2 class="sec">2. Devoluciones seleccionadas ({{ devoluciones|length }})</h2>
   <table class="tabla">
-    <thead><tr><th>N.º</th><th>Sucursal</th><th>Estado</th><th>Carga actual</th><th class="r">Unidades (est.)</th></tr></thead>
+    <thead><tr><th>N.º</th><th>Sucursal</th><th>Estado</th><th>Carga actual</th><th class="r">Unidades (est.)</th><th>Qué pasa</th></tr></thead>
     <tbody>
       {% for d in devoluciones %}
       <tr>
@@ -54,11 +54,12 @@
         <td>{{ d.get_estado_display }}</td>
         <td>{% if d.carga %}{{ d.carga.codigo_reporte }}{% else %}<span class="help">Sin carga</span>{% endif %}</td>
         <td class="r">{{ d.total_unidades_estimado }}</td>
+        <td>{% if not d.puede_asignar %}<span class="errornote" style="display:inline;padding:2px 6px;">No se mueve: {{ d.por_que_no }}</span>{% elif d.aviso_carga %}<b style="color:#8a5200;">{{ d.aviso_carga }}</b>{% else %}Se asigna{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
-  <p class="help">Solo se agregan las devoluciones que todavía están en estado "Solicitada" (sin carga).</p>
+  <p class="help">Se agregan las devoluciones sin carga y se mueven las que ya están en otra carga pero el repartidor todavía no recolectó (Cambio #40). Las ya recolectadas no se mueven.</p>
 
   {% for d in devoluciones %}
     <input type="hidden" name="{{ action_checkbox_name }}" value="{{ d.pk }}">

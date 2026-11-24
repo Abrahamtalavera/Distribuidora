@@ -1180,7 +1180,7 @@ class AsignarDevolucionACargaTests(DevolucionSinFacturaBase):
             ACTION_CHECKBOX_NAME: [d1.pk],
         }
         r = self.client.post(url, datos)
-        self.assertContains(r, "Agregar devoluciones a una Carga existente")
+        self.assertContains(r, "Agregar o mover devoluciones a una Carga existente")
         self.assertContains(r, destino.codigo_reporte)
         r = self.client.post(url, {**datos, "apply": "1", "carga_destino": destino.pk})
         self.assertEqual(r.status_code, 302)
@@ -2143,3 +2143,73 @@ class FiltrosRevisionDevolucionesTests(Cambio28Base):
         self.assertContains(r, "tipo=sf&amp;q=zzz-nadie")
         r = self.client.get(reverse("cartera_lista"), {"ver": "todas", "tipo": "raro"})
         self.assertContains(r, '<option value="ambas" selected>')
+
+
+class ReasignarDevolucionSinFacturaTests(DevolucionSinFacturaBase):
+    """Cambio #40: mover una devolución asignada a otra carga o quitarla de su carga."""
+
+    def test_mover_a_otra_carga_existente(self):
+        from core.devoluciones_sf import asignar_a_carga_existente
+
+        origen = Carga.objects.create(estado="EN_RUTA")
+        destino = Carga.objects.create(estado="PLANEADA")
+        d = self.crear_devolucion(carga=origen, estado="ASIGNADA")
+        recolectada = self.crear_devolucion(carga=origen, estado="RECOLECTADA")
+        movidas = asignar_a_carga_existente(destino, [d, recolectada])
+        self.assertEqual([x.id for x in movidas], [d.id])
+        d.refresh_from_db(); recolectada.refresh_from_db()
+        self.assertEqual((d.carga, d.estado), (destino, "ASIGNADA"))
+        self.assertEqual(recolectada.carga, origen)
+
+    def test_no_se_mueve_a_la_misma_carga_ni_recolectada(self):
+        from core.devoluciones_sf import AsignarDevolucionError, asignar_a_carga_existente
+
+        carga = Carga.objects.create(estado="PLANEADA")
+        d = self.crear_devolucion(carga=carga, estado="ASIGNADA")
+        with self.assertRaises(AsignarDevolucionError):
+            asignar_a_carga_existente(carga, [d])
+        r = self.crear_devolucion(carga=carga, estado="RECOLECTADA")
+        with self.assertRaises(AsignarDevolucionError):
+            asignar_a_carga_existente(Carga.objects.create(estado="PLANEADA"), [r])
+
+    def test_mover_desde_carga_terminada_sin_recolectar_a_carga_nueva(self):
+        from core.devoluciones_sf import crear_carga_con_devoluciones
+
+        vieja = Carga.objects.create(estado="CERRADA")
+        d = self.crear_devolucion(carga=vieja, estado="ASIGNADA")
+        nueva, asignadas = crear_carga_con_devoluciones(
+            fecha_planeada=self.hoy, ruta=self.ruta, conductor=self.repartidor,
+            vehiculo=None, km_inicial=None, observaciones="", devoluciones=[d],
+        )
+        d.refresh_from_db()
+        self.assertEqual((d.carga, d.estado), (nueva, "ASIGNADA"))
+
+    def test_admin_muestra_aviso_y_mueve(self):
+        from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
+
+        origen = Carga.objects.create(estado="PLANEADA")
+        destino = Carga.objects.create(estado="PLANEADA")
+        d = self.crear_devolucion(carga=origen, estado="ASIGNADA")
+        self.client.force_login(self.admin)
+        url = reverse("admin:core_devolucionsinfactura_changelist")
+        datos = {"action": "agregar_a_carga_existente_devolucion", ACTION_CHECKBOX_NAME: [d.pk]}
+        r = self.client.post(url, datos)
+        self.assertContains(r, f"Sale de {origen.codigo_reporte}")
+        r = self.client.post(url, {**datos, "apply": "1", "carga_destino": destino.pk})
+        self.assertEqual(r.status_code, 302)
+        d.refresh_from_db()
+        self.assertEqual(d.carga, destino)
+
+    def test_admin_quitar_de_carga(self):
+        from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
+
+        carga = Carga.objects.create(estado="PLANEADA")
+        d = self.crear_devolucion(carga=carga, estado="ASIGNADA")
+        r = self.crear_devolucion(carga=carga, estado="RECOLECTADA")
+        self.client.force_login(self.admin)
+        url = reverse("admin:core_devolucionsinfactura_changelist")
+        resp = self.client.post(url, {"action": "quitar_de_carga_devolucion", ACTION_CHECKBOX_NAME: [d.pk, r.pk]}, follow=True)
+        self.assertContains(resp, "quedan como Solicitada")
+        d.refresh_from_db(); r.refresh_from_db()
+        self.assertEqual((d.carga, d.estado), (None, "SOLICITADA"))
+        self.assertEqual((r.carga, r.estado), (carga, "RECOLECTADA"))

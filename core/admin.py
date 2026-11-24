@@ -12,6 +12,8 @@ from core.forms import AgruparEnCargaForm
 from core.paquetes import facturas_sin_paquetes_costo, leer_paquetes_costo
 from core.devoluciones_sf import (
     AsignarDevolucionError,
+    quitar_de_carga as quitar_devoluciones_de_carga,
+    revisar_devoluciones,
     asignar_a_carga_existente as asignar_devolucion_a_carga_existente,
     crear_carga_con_devoluciones,
 )
@@ -672,7 +674,11 @@ class DevolucionSinFacturaAdmin(admin.ModelAdmin):
         "revisada_cartera_por",
     )
     inlines = [DevolucionSinFacturaDetalleInline]
-    actions = ["agrupar_en_carga_devolucion", "agregar_a_carga_existente_devolucion"]
+    actions = [
+        "agrupar_en_carga_devolucion",
+        "agregar_a_carga_existente_devolucion",
+        "quitar_de_carga_devolucion",
+    ]
 
     def agrupar_en_carga_devolucion(self, request, queryset):
         """
@@ -681,8 +687,9 @@ class DevolucionSinFacturaAdmin(admin.ModelAdmin):
         agrupa facturas en core.admin.FacturaAdmin.agrupar_en_carga.
         """
         devoluciones = list(
-            queryset.select_related("sucursal__cliente").order_by("fecha_ingreso", "id")
+            queryset.select_related("sucursal__cliente", "carga").order_by("fecha_ingreso", "id")
         )
+        revisar_devoluciones(devoluciones)  # Cambio #40: avisa si sale de otra carga
         if "apply" in request.POST:
             form = AgruparEnCargaForm(request.POST)
             if form.is_valid():
@@ -761,6 +768,7 @@ class DevolucionSinFacturaAdmin(admin.ModelAdmin):
 
         for c in cargas:
             c.total_devoluciones = c.devoluciones_sin_factura.count()
+        revisar_devoluciones(devoluciones, destino)  # Cambio #40
         return render(
             request,
             "admin/core/devolucionsinfactura/agregar_a_carga.html",
@@ -770,13 +778,31 @@ class DevolucionSinFacturaAdmin(admin.ModelAdmin):
                 "destino": destino,
                 "action_checkbox_name": ACTION_CHECKBOX_NAME,
                 "opts": self.model._meta,
-                "title": "Agregar devoluciones a una Carga existente",
+                "title": "Agregar o mover devoluciones a una Carga existente",
             },
         )
 
     agregar_a_carga_existente_devolucion.short_description = (
-        "Agregar seleccionadas a una Carga existente"
+        "Agregar o mover seleccionadas a una Carga existente"
     )
+
+    @admin.action(description="Quitar seleccionadas de su Carga (vuelven a Solicitada)")
+    def quitar_de_carga_devolucion(self, request, queryset):
+        """Cambio #40: libera devoluciones asignadas que aún no se recolectan."""
+        try:
+            quitadas = quitar_devoluciones_de_carga(list(queryset.select_related("carga")))
+        except AsignarDevolucionError as exc:
+            messages.error(request, str(exc))
+            return None
+        omitidas = queryset.count() - len(quitadas)
+        texto = (
+            f"{len(quitadas)} devolución{'es' if len(quitadas) != 1 else ''} "
+            f"quitada{'s' if len(quitadas) != 1 else ''} de su carga; quedan como Solicitada."
+        )
+        if omitidas:
+            texto += f" {omitidas} no se tocaron (sin carga o ya recolectadas)."
+        self.message_user(request, texto, messages.SUCCESS)
+        return None
 
 
 @admin.register(models.AreaResponsable)

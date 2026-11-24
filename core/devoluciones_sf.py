@@ -115,10 +115,36 @@ def devoluciones_asignables():
     )
 
 
+# Cambio #40: una devolución ya asignada se puede pasar a otra carga (o
+# volver a "Solicitada") mientras el repartidor no la haya recolectado.
+ESTADOS_REASIGNABLES = ("SOLICITADA", "ASIGNADA")
+
+
+def revisar_devoluciones(devoluciones, destino=None):
+    """
+    Anota en cada devolución .puede_asignar (bool), .por_que_no y .aviso_carga
+    (lo que va a pasar, p. ej. que sale de otra carga). Devuelve
+    (aptas, no_aptas). Mismo criterio que core.asignar.revisar para facturas.
+    """
+    aptas, no_aptas = [], []
+    for d in devoluciones:
+        d.puede_asignar, d.por_que_no, d.aviso_carga = True, "", ""
+        actual = d.carga
+        if d.estado not in ESTADOS_REASIGNABLES:
+            d.puede_asignar, d.por_que_no = False, "Ya fue recolectada por el repartidor"
+        elif destino is not None and d.carga_id == destino.id:
+            d.puede_asignar, d.por_que_no = False, "Ya está en esta carga"
+        elif actual is not None:
+            d.aviso_carga = f"Sale de {actual.codigo_reporte} ({actual.get_estado_display().lower()})"
+        (aptas if d.puede_asignar else no_aptas).append(d)
+    return aptas, no_aptas
+
+
 @transaction.atomic
 def asignar_a_carga_existente(destino, devoluciones):
     """
-    Asigna las devoluciones (todavía sin Carga) a una Carga que ya existe.
+    Asigna las devoluciones a una Carga que ya existe. Las que estaban en
+    otra carga y todavía no se recolectan se mueven (Cambio #40).
     Devuelve la lista de las que de verdad se asignaron.
     """
     destino = Carga.objects.select_for_update(of=("self",)).get(pk=destino.pk)
@@ -127,14 +153,16 @@ def asignar_a_carga_existente(destino, devoluciones):
             f"{destino.codigo_reporte} está {destino.get_estado_display().lower()}: "
             "solo se asignan devoluciones a cargas Planeadas o En ruta."
         )
-    aptas = [d for d in devoluciones if d.estado in ESTADOS_ASIGNABLES]
+    aptas, _ = revisar_devoluciones(devoluciones, destino)
     if not aptas:
         raise AsignarDevolucionError(
-            "Ninguna de las devoluciones seleccionadas se puede asignar "
-            "(ya tienen una Carga asignada)."
+            "Ninguna de las devoluciones seleccionadas se puede asignar a esta carga "
+            "(ya están en ella o el repartidor ya las recolectó)."
         )
     ids = [d.id for d in aptas]
-    DevolucionSinFactura.objects.filter(id__in=ids).update(carga=destino, estado="ASIGNADA")
+    DevolucionSinFactura.objects.filter(id__in=ids, estado__in=ESTADOS_REASIGNABLES).update(
+        carga=destino, estado="ASIGNADA"
+    )
     for d in aptas:
         d.carga = destino
         d.estado = "ASIGNADA"
@@ -146,11 +174,11 @@ def crear_carga_con_devoluciones(
     *, fecha_planeada, ruta, conductor, vehiculo, km_inicial, observaciones, devoluciones,
 ):
     """Crea una Carga nueva y le asigna las devoluciones seleccionadas."""
-    aptas = [d for d in devoluciones if d.estado in ESTADOS_ASIGNABLES]
+    aptas, _ = revisar_devoluciones(devoluciones)
     if not aptas:
         raise AsignarDevolucionError(
             "Ninguna de las devoluciones seleccionadas se puede asignar "
-            "(ya tienen una Carga asignada)."
+            "(el repartidor ya las recolectó)."
         )
     carga = Carga.objects.create(
         fecha_planeada=fecha_planeada,
@@ -161,8 +189,27 @@ def crear_carga_con_devoluciones(
         observaciones=observaciones,
     )
     ids = [d.id for d in aptas]
-    DevolucionSinFactura.objects.filter(id__in=ids).update(carga=carga, estado="ASIGNADA")
+    DevolucionSinFactura.objects.filter(id__in=ids, estado__in=ESTADOS_REASIGNABLES).update(
+        carga=carga, estado="ASIGNADA"
+    )
     return carga, aptas
+
+
+@transaction.atomic
+def quitar_de_carga(devoluciones):
+    """
+    Cambio #40: saca de su carga las devoluciones asignadas que todavía no
+    se recolectan; vuelven a "Solicitada" para asignarlas de nuevo.
+    """
+    aptas = [d for d in devoluciones if d.estado == "ASIGNADA"]
+    if not aptas:
+        raise AsignarDevolucionError(
+            "Ninguna de las devoluciones seleccionadas está asignada sin recolectar."
+        )
+    DevolucionSinFactura.objects.filter(id__in=[d.id for d in aptas], estado="ASIGNADA").update(
+        carga=None, estado="SOLICITADA"
+    )
+    return aptas
 
 
 # --- Captura del repartidor ---------------------------------------------
