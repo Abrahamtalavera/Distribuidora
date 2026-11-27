@@ -46,7 +46,7 @@
 <body>
 
   <div class="barra-acciones">
-    <a href="{% url 'admin:core_carga_cierre' carga.pk %}" class="secundario">&larr; Volver al cierre</a>
+    {% if desde_cartera %}<a href="#" onclick="window.close();return false;" class="secundario">Cerrar</a>{% else %}<a href="{% url 'admin:core_carga_cierre' carga.pk %}" class="secundario">&larr; Volver al cierre</a>{% endif %}
     <button onclick="window.print()">Imprimir</button>
   </div>
 

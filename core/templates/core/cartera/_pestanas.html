@@ -7,5 +7,6 @@
 </style>
 <nav class="pestanas">
   <a href="{% url 'cartera_cargas' %}" class="{% if pestana == 'cargas' %}activa{% endif %}">Consulta de cargas</a>
-  <a href="{% url 'cartera_lista' %}" class="{% if pestana != 'cargas' %}activa{% endif %}">Revisión de devoluciones</a>
+  <a href="{% url 'cartera_lista' %}" class="{% if pestana != 'cargas' and pestana != 'imprimir' %}activa{% endif %}">Revisión de devoluciones</a>
+  <a href="{% url 'cartera_imprimir' %}" class="{% if pestana == 'imprimir' %}activa{% endif %}">Imprimir cierre de carga</a>
 </nav>

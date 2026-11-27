@@ -2213,3 +2213,41 @@ class ReasignarDevolucionSinFacturaTests(DevolucionSinFacturaBase):
         d.refresh_from_db(); r.refresh_from_db()
         self.assertEqual((d.carga, d.estado), (None, "SOLICITADA"))
         self.assertEqual((r.carga, r.estado), (carga, "RECOLECTADA"))
+
+
+class CarteraImprimirCierreTests(Cambio28Base):
+    """Cambio #41: cartera imprime el reporte de cierre de cargas Cerradas."""
+
+    def setUp(self):
+        super().setUp()
+        self.cerrada = Carga.objects.create(estado="CERRADA", ruta=self.ruta, conductor=self.repartidor, cerrada_en=timezone.now())
+        self.vieja = Carga.objects.create(estado="CERRADA", ruta=self.ruta, cerrada_en=timezone.now() - timedelta(days=90))
+        self.abierta = Carga.objects.create(estado="RUTA_TERMINADA", ruta=self.ruta)
+
+    def test_lista_solo_cerradas_y_busca_por_id(self):
+        self.client.force_login(self.cartera_user)
+        r = self.client.get(reverse("cartera_imprimir"))
+        self.assertContains(r, "Imprimir cierre de carga")
+        self.assertContains(r, self.cerrada.codigo_reporte)
+        self.assertNotContains(r, self.abierta.codigo_reporte)
+        self.assertNotContains(r, self.vieja.codigo_reporte)  # fuera de las fechas
+        r = self.client.get(reverse("cartera_imprimir"), {"q": self.vieja.codigo_reporte})
+        self.assertContains(r, reverse("cartera_imprimir_cierre", args=[self.vieja.id]))
+        r = self.client.get(reverse("cartera_imprimir"), {"q": str(self.abierta.id)})
+        self.assertContains(r, "No hay una carga Cerrada")
+
+    def test_imprime_cierre_solo_si_cerrada(self):
+        self.client.force_login(self.cartera_user)
+        r = self.client.get(reverse("cartera_imprimir_cierre", args=[self.cerrada.id]))
+        self.assertContains(r, "Reporte de cierre de Carga")
+        self.assertNotContains(r, "Volver al cierre")
+        r = self.client.get(reverse("cartera_imprimir_cierre", args=[self.abierta.id]))
+        self.assertEqual(r.status_code, 404)
+        r = self.client.get(reverse("cartera_cargas"), {"desde": (self.hoy - timedelta(days=5)).isoformat(), "hasta": self.hoy.isoformat(), "estado": "CERRADA"})
+        self.assertEqual(r.status_code, 200)
+
+    def test_requiere_permiso_de_cartera(self):
+        url = reverse("cartera_imprimir_cierre", args=[self.cerrada.id])
+        self.assertEqual(self.client.get(url).status_code, 302)
+        self.client.force_login(self.bodega_user)
+        self.assertEqual(self.client.get(url).status_code, 403)

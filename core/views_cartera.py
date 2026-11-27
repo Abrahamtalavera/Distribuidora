@@ -289,3 +289,91 @@ def devolucion_imprimir_view(request, tipo, objeto_id):
             "imprimir_ya": request.GET.get("imprimir") == "1",
         },
     )
+
+
+# --- Cambio #41: imprimir el reporte de cierre de una carga Cerrada -----------
+
+
+def _cargas_cerradas(request):
+    """Cargas en estado Cerrada, filtradas por ID, fechas de cierre y ruta."""
+    from datetime import timedelta
+
+    from core.models import Carga
+
+    hoy = timezone.localdate()
+    desde = _fecha(request.GET.get("desde")) or hoy - timedelta(days=30)
+    hasta = _fecha(request.GET.get("hasta")) or hoy
+    if desde > hasta:
+        desde, hasta = hasta, desde
+    texto = (request.GET.get("q") or "").strip().upper().replace("CARGA-", "").lstrip("0")
+    qs = Carga.objects.filter(estado="CERRADA").select_related("ruta", "conductor", "vehiculo", "cerrada_por")
+    if texto:
+        # Buscando por ID no se aplican las fechas: se encuentra aunque sea vieja.
+        qs = qs.filter(pk=int(texto)) if texto.isdigit() else qs.none()
+    else:
+        qs = qs.filter(cerrada_en__date__gte=desde, cerrada_en__date__lte=hasta)
+    try:
+        ruta_id = int(request.GET.get("ruta") or 0) or None
+    except ValueError:
+        ruta_id = None
+    if ruta_id:
+        qs = qs.filter(ruta_id=ruta_id)
+    return qs.order_by("-cerrada_en", "-id")[:300], desde, hasta, ruta_id
+
+
+def _fecha(texto):
+    from datetime import datetime
+
+    try:
+        return datetime.strptime((texto or "").strip(), "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+@cartera_required
+def cartera_imprimir_view(request):
+    from django.db.models import Count, Sum
+
+    from core.models import Ruta
+
+    cargas, desde, hasta, ruta_id = _cargas_cerradas(request)
+    cargas = list(cargas)
+    from core.models import Factura
+
+    totales = {
+        x["carga"]: x
+        for x in Factura.objects.filter(carga__in=cargas).values("carga").annotate(n=Count("id"), monto=Sum("total"))
+    }
+    for c in cargas:
+        t = totales.get(c.id, {})
+        c.n_facturas, c.monto_facturas = t.get("n", 0), t.get("monto") or 0
+    return render(request, "core/cartera/imprimir.html", {
+        "pestana": "imprimir",
+        "cargas": cargas,
+        "desde": desde,
+        "hasta": hasta,
+        "ruta_id": ruta_id,
+        "q": (request.GET.get("q") or "").strip()[:20],
+        "rutas": Ruta.objects.order_by("nombre"),
+    })
+
+
+@cartera_required
+def cartera_imprimir_cierre_view(request, carga_id):
+    from core.cierre import resumen_cierre
+    from core.devoluciones_sf import detalles_sin_factura_de_la_carga
+    from core.models import Carga
+
+    carga = Carga.objects.filter(pk=carga_id).first()
+    if carga is None or not carga.esta_cerrada:
+        return render(
+            request, "core/devoluciones/no_imprimible.html",
+            {"mensaje": "Solo se puede imprimir el reporte de cierre de una carga en estado Cerrada."},
+            status=404,
+        )
+    return render(request, "core/imprimir_cierre.html", {
+        "carga": carga,
+        "r": resumen_cierre(carga),
+        "detalles_devoluciones_sf": detalles_sin_factura_de_la_carga(carga),
+        "desde_cartera": True,
+    })

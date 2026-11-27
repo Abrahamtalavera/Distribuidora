@@ -87,6 +87,9 @@ urlpatterns = [
         views_cartera.devolucion_imprimir_view,
         name="devolucion_imprimir",
     ),
+    # Cambio #41: cartera imprime el reporte de cierre de cargas Cerradas.
+    path("cartera/imprimir/", views_cartera.cartera_imprimir_view, name="cartera_imprimir"),
+    path("cartera/imprimir/<int:carga_id>/", views_cartera.cartera_imprimir_cierre_view, name="cartera_imprimir_cierre"),
     path("cartera/salir/", views_cartera.cartera_salir_view, name="cartera_salir"),
     path(
         "cartera/enterado/<str:tipo>/<int:objeto_id>/",

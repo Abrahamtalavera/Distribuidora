@@ -1,0 +1,69 @@
+{% extends "core/bodega/base.html" %}
+{% load formato %}
+{% block titulo %}Cartera — imprimir cierre de carga{% endblock %}
+{% block estilos %}
+<style>
+  .desk { max-width:1180px; }
+  .filtros { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; padding:12px 14px; background:#F6F6FA; border:1px solid var(--border); border-radius:10px; margin-bottom:14px; }
+  .filtros label { display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.02em; }
+  .filtros input, .filtros select { padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:14px; background:#fff; min-height:38px; }
+  .filtros button { min-height:38px; padding:0 18px; border:0; background:var(--primary); color:#fff; border-radius:6px; font-weight:700; cursor:pointer; font-family:inherit; font-size:14px; }
+  .btn-imp { display:inline-flex; align-items:center; gap:6px; min-height:34px; padding:0 12px; border-radius:6px; background:var(--primary); color:#fff; text-decoration:none; font-weight:700; font-size:13px; white-space:nowrap; }
+  .btn-imp:hover { color:#fff; background:var(--primary-dark); }
+</style>
+{% endblock %}
+{% block cuerpo %}
+<div class="desk">
+  <div class="desk-head">
+    <div><h1>Consulta de cartera</h1><div class="sub">Reporte de cierre de las cargas en estado Cerrada</div></div>
+    <form class="usuario" method="post" action="{% url 'cartera_salir' %}">
+      {% csrf_token %}
+      {% if request.user.is_staff %}<a href="{% url 'admin:index' %}" style="color:#fff;">Ir al admin</a>{% endif %}
+      <span>Usuario: {{ request.user.get_username }}</span>
+      <button type="submit">Salir</button>
+    </form>
+  </div>
+  {% include "core/cartera/_pestanas.html" %}
+  <div class="desk-body">
+    <form method="get" class="filtros">
+      <label>ID de carga<input type="search" name="q" value="{{ q }}" placeholder="Ej. 125 o CARGA-0125" style="width:180px"></label>
+      <label>Cerrada del<input type="date" name="desde" value="{{ desde|date:'Y-m-d' }}"></label>
+      <label>Al<input type="date" name="hasta" value="{{ hasta|date:'Y-m-d' }}"></label>
+      <label>Ruta<select name="ruta"><option value="">Todas</option>{% for r in rutas %}<option value="{{ r.id }}" {% if ruta_id == r.id %}selected{% endif %}>{{ r.nombre }}</option>{% endfor %}</select></label>
+      <button type="submit">Buscar</button>
+      {% if q %}<a href="{% url 'cartera_imprimir' %}" class="detalle" style="align-self:center">Quitar búsqueda</a>{% endif %}
+    </form>
+    <p class="detalle" style="margin:-4px 0 12px">Solo aparecen cargas en estado <b>Cerrada</b>. Buscando por ID no se toman en cuenta las fechas.</p>
+
+    <div class="seccion">
+      {% if cargas %}
+      <div class="scroll">
+      <table>
+        <thead><tr><th>ID de carga</th><th>Fecha planeada</th><th>Ruta</th><th>Conductor</th><th>Unidad</th><th>Cerrada el</th><th>Cerrada por</th><th class="r">Facturas</th><th class="r">Monto facturas</th><th></th></tr></thead>
+        <tbody>
+        {% for c in cargas %}
+          <tr>
+            <td><b>{{ c.codigo_reporte }}</b></td>
+            <td>{{ c.fecha_planeada|date:"d/m/Y" }}</td>
+            <td>{{ c.ruta|default:"—" }}</td>
+            <td>{{ c.conductor|default:"—" }}</td>
+            <td>{{ c.vehiculo.placa|default:"—" }}</td>
+            <td>{{ c.cerrada_en|date:"d/m/Y H:i"|default:"—" }}</td>
+            <td>{{ c.cerrada_por.get_username|default:"—" }}</td>
+            <td class="r">{{ c.n_facturas }}</td>
+            <td class="r">C$ {{ c.monto_facturas|moneda }}</td>
+            <td class="r"><a class="btn-imp" href="{% url 'cartera_imprimir_cierre' c.id %}" target="_blank" rel="noopener">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+              Imprimir cierre</a></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+        <div class="detalle" style="padding:12px 4px">{% if q %}No hay una carga Cerrada con el ID "{{ q }}".{% else %}No hay cargas cerradas en estas fechas.{% endif %}</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

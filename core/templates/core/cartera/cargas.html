@@ -180,7 +180,7 @@
             <td>{{ c.fecha_planeada|date:"d/m/Y" }}</td>
             <td>{{ c.ruta|default:"—" }}</td>
             <td>{{ c.conductor|default:"—" }}</td>
-            <td><span class="badge {% if c.estado == 'PLANEADA' %}badge-pendiente{% elif c.estado == 'EN_RUTA' %}badge-ruta{% elif c.estado == 'RUTA_TERMINADA' %}badge-terminada{% else %}badge-completa{% endif %}">{{ c.get_estado_display }}</span></td>
+            <td><span class="badge {% if c.estado == 'PLANEADA' %}badge-pendiente{% elif c.estado == 'EN_RUTA' %}badge-ruta{% elif c.estado == 'RUTA_TERMINADA' %}badge-terminada{% else %}badge-completa{% endif %}">{{ c.get_estado_display }}</span>{% if c.estado == 'CERRADA' %} <a href="{% url 'cartera_imprimir_cierre' c.pk %}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:12px;white-space:nowrap">Imprimir</a>{% endif %}</td>
             <td class="r">{{ c.total_facturas }}</td>
             <td class="r" style="color:var(--ok);font-weight:700;">{{ c.completa }}</td>
             <td class="r" style="color:#AE4627;font-weight:700;">{{ c.devolucion }}</td>
